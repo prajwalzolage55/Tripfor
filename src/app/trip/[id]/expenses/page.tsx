@@ -2,7 +2,9 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { db } from '@/lib/firebase';
+import { collection, query, where, getDocs, doc, setDoc, deleteDoc, orderBy } from 'firebase/firestore';
+import { useAuth } from '@/components/AuthProvider';
 import type { Expense, ItineraryItem, TripMember, ItemParticipant, SplitType } from '@/lib/types';
 import {
   Plus, Receipt, DollarSign, Upload, Image, X, Loader2, Check, User, Tag, ChevronDown, Trash2,
@@ -38,20 +40,29 @@ export default function ExpensesPage() {
   const [saving, setSaving] = useState(false);
 
   const loadData = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const expQ = query(collection(db, 'expenses'), where('trip_id', '==', tripId), orderBy('created_at', 'desc'));
+    const itemQ = query(collection(db, 'itinerary_items'), where('trip_id', '==', tripId), where('status', '==', 'active'));
+    const memQ = query(collection(db, 'trip_members'), where('trip_id', '==', tripId));
+
     const [expRes, itemRes, memRes] = await Promise.all([
-      supabase.from('expenses').select('*').eq('trip_id', tripId).order('created_at', { ascending: false }),
-      supabase.from('itinerary_items').select('*').eq('trip_id', tripId).eq('status', 'active'),
-      supabase.from('trip_members').select('*').eq('trip_id', tripId),
+      getDocs(expQ),
+      getDocs(itemQ),
+      getDocs(memQ),
     ]);
 
-    setExpenses(expRes.data || []);
-    setItems(itemRes.data || []);
-    setMembers(memRes.data || []);
+    const loadedExpenses = expRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as Expense));
+    const loadedItems = itemRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as ItineraryItem));
+    const loadedMembers = memRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as TripMember));
 
-    // Set current member
-    if (user && memRes.data) {
-      const me = memRes.data.find(m => m.user_id === user.id);
+    setExpenses(loadedExpenses);
+    setItems(loadedItems);
+    setMembers(loadedMembers);
+
+    // Set current member using localStorage auth
+    const storedUser = localStorage.getItem('gtl_user');
+    if (storedUser && loadedMembers.length > 0) {
+      const parsed = JSON.parse(storedUser);
+      const me = loadedMembers.find(m => m.user_id === parsed.id);
       if (me) {
         setCurrentMemberId(me.id);
         if (!formPaidBy) setFormPaidBy(me.id);
@@ -59,13 +70,17 @@ export default function ExpensesPage() {
     }
 
     // Load participants for all items
-    if (itemRes.data && itemRes.data.length > 0) {
-      const ids = itemRes.data.map(i => i.id);
-      const { data: parts } = await supabase.from('item_participants').select('*').in('item_id', ids);
+    if (loadedItems.length > 0) {
+      const partsQ = query(collection(db, 'item_participants'));
+      const partsRes = await getDocs(partsQ);
+      const parts = partsRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as ItemParticipant));
+      const activeIds = new Set(loadedItems.map(i => i.id));
       const map: Record<string, ItemParticipant[]> = {};
-      (parts || []).forEach(p => {
-        if (!map[p.item_id]) map[p.item_id] = [];
-        map[p.item_id].push(p);
+      parts.forEach(p => {
+        if (activeIds.has(p.item_id)) {
+          if (!map[p.item_id]) map[p.item_id] = [];
+          map[p.item_id].push(p);
+        }
       });
       setParticipantsMap(map);
     }
@@ -107,19 +122,20 @@ export default function ExpensesPage() {
     e.preventDefault();
     setSaving(true);
 
-    const { error } = await supabase.from('expenses').insert({
-      trip_id: tripId,
-      item_id: formItemId || null,
-      amount: parseFloat(formAmount),
-      paid_by: formPaidBy,
-      split_type: formSplitType,
-      receipt_url: formReceipt || null,
-      note: formNote || null,
-    });
+    try {
+      const expRef = doc(collection(db, 'expenses'));
+      await setDoc(expRef, {
+        id: expRef.id,
+        trip_id: tripId,
+        item_id: formItemId || null,
+        amount: parseFloat(formAmount),
+        paid_by: formPaidBy,
+        split_type: formSplitType,
+        receipt_url: formReceipt || null,
+        note: formNote || null,
+        created_at: new Date().toISOString()
+      });
 
-    if (error) {
-      alert(error.message);
-    } else {
       setShowForm(false);
       setFormItemId('');
       setFormAmount('');
@@ -127,14 +143,20 @@ export default function ExpensesPage() {
       setFormNote('');
       setFormReceipt('');
       loadData();
+    } catch (error: any) {
+      alert(error.message);
     }
     setSaving(false);
   }
 
   async function deleteExpense(id: string) {
     if (!confirm('Delete this expense?')) return;
-    await supabase.from('expenses').delete().eq('id', id);
-    loadData();
+    try {
+      await deleteDoc(doc(db, 'expenses', id));
+      loadData();
+    } catch (e) {
+      console.error(e);
+    }
   }
 
   const memberName = (id: string) => members.find(m => m.id === id)?.display_name || '?';

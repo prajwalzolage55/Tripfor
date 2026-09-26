@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { db } from '@/lib/firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { computeSettlements, type RawExpense } from '@/lib/engine';
 import type { Expense, ItineraryItem, TripMember, ItemParticipant, SplitType } from '@/lib/types';
 import type { Settlement } from '@/lib/engine';
@@ -39,95 +40,105 @@ export default function MePage() {
   const [totalShare, setTotalShare] = useState(0);
 
   const loadData = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    try {
+      const storedUser = localStorage.getItem('gtl_user');
+      if (!storedUser) {
+        setLoading(false);
+        return;
+      }
+      const parsed = JSON.parse(storedUser);
 
-    const [memRes, expRes, itemRes] = await Promise.all([
-      supabase.from('trip_members').select('*').eq('trip_id', tripId),
-      supabase.from('expenses').select('*').eq('trip_id', tripId),
-      supabase.from('itinerary_items').select('*').eq('trip_id', tripId),
-    ]);
+      const memQ = query(collection(db, 'trip_members'), where('trip_id', '==', tripId));
+      const expQ = query(collection(db, 'expenses'), where('trip_id', '==', tripId));
+      const itemQ = query(collection(db, 'itinerary_items'), where('trip_id', '==', tripId));
 
-    const loadedMembers = memRes.data || [];
-    const loadedExpenses = expRes.data || [];
-    const loadedItems = itemRes.data || [];
-    setMembers(loadedMembers);
+      const [memRes, expRes, itemRes] = await Promise.all([
+        getDocs(memQ),
+        getDocs(expQ),
+        getDocs(itemQ),
+      ]);
 
-    const me = loadedMembers.find(m => m.user_id === user.id);
-    if (!me) {
+      const loadedMembers = memRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as TripMember));
+      const loadedExpenses = expRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as Expense));
+      const loadedItems = itemRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as ItineraryItem));
+      setMembers(loadedMembers);
+
+      const me = loadedMembers.find(m => m.user_id === parsed.id);
+      if (!me) {
+        setLoading(false);
+        return;
+      }
+      setCurrentMember(me);
+
+      // Get cancelled item IDs
+      const cancelledIds = new Set(loadedItems.filter(i => i.status === 'cancelled').map(i => i.id));
+
+      const partsQ = query(collection(db, 'item_participants'));
+      const partsRes = await getDocs(partsQ);
+      const allPartsRaw = partsRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as ItemParticipant));
+      const allItemIds = new Set(loadedItems.map(i => i.id));
+      const allParts = allPartsRaw.filter(p => allItemIds.has(p.item_id));
+
+      // Build participant map
+      const partMap: Record<string, ItemParticipant[]> = {};
+      allParts.forEach(p => {
+        if (!partMap[p.item_id]) partMap[p.item_id] = [];
+        partMap[p.item_id].push(p);
+      });
+
+      // My items: items where I'm a participant
+      const myItemIds = new Set(allParts.filter(p => p.member_id === me.id).map(p => p.item_id));
+      setMyItems(loadedItems.filter(i => myItemIds.has(i.id)));
+
+      // My expenses (paid by me or involving me)
+      const myExps = loadedExpenses.filter(exp => {
+        if (exp.paid_by === me.id) return true;
+        if (exp.item_id && myItemIds.has(exp.item_id)) return true;
+        if (!exp.item_id) return true; // General expense involves everyone
+        return false;
+      });
+      setMyExpenses(myExps);
+
+      // Run calculation engine for all expenses
+      const memberIds = loadedMembers.map(m => m.id);
+      const rawExpenses: RawExpense[] = loadedExpenses.map(exp => {
+        const participants = exp.item_id && partMap[exp.item_id]
+          ? partMap[exp.item_id].map(p => ({ memberId: p.member_id, percentage: p.percentage ?? undefined }))
+          : memberIds.map(id => ({ memberId: id }));
+        return {
+          id: exp.id,
+          amount: Number(exp.amount),
+          paidBy: exp.paid_by,
+          splitType: exp.split_type as SplitType,
+          itemId: exp.item_id,
+          participants,
+        };
+      });
+
+      const result = computeSettlements(rawExpenses, memberIds, cancelledIds);
+      setBalance(result.balances[me.id] || 0);
+
+      // My settlements
+      const mySettles = result.settlements.filter(s => s.from === me.id || s.to === me.id);
+      setMySettlements(mySettles);
+
+      // Compute total paid by me
+      const paid = loadedExpenses
+        .filter(e => e.paid_by === me.id && !(e.item_id && cancelledIds.has(e.item_id)))
+        .reduce((s, e) => s + Number(e.amount), 0);
+      setTotalPaid(paid);
+
+      // Compute total share for me
+      let share = 0;
+      result.expenseDetails.forEach(exp => {
+        if (exp.shares[me.id]) share += exp.shares[me.id];
+      });
+      setTotalShare(Math.round(share * 100) / 100);
+    } catch (err) {
+      console.error('Failed to load me page data:', err);
+    } finally {
       setLoading(false);
-      return;
     }
-    setCurrentMember(me);
-
-    // Get cancelled item IDs
-    const cancelledIds = new Set(loadedItems.filter(i => i.status === 'cancelled').map(i => i.id));
-
-    // Load all item_participants
-    const allItemIds = loadedItems.map(i => i.id);
-    let allParts: ItemParticipant[] = [];
-    if (allItemIds.length > 0) {
-      const { data } = await supabase.from('item_participants').select('*').in('item_id', allItemIds);
-      allParts = data || [];
-    }
-
-    // Build participant map
-    const partMap: Record<string, ItemParticipant[]> = {};
-    allParts.forEach(p => {
-      if (!partMap[p.item_id]) partMap[p.item_id] = [];
-      partMap[p.item_id].push(p);
-    });
-
-    // My items: items where I'm a participant
-    const myItemIds = new Set(allParts.filter(p => p.member_id === me.id).map(p => p.item_id));
-    setMyItems(loadedItems.filter(i => myItemIds.has(i.id)));
-
-    // My expenses (paid by me or involving me)
-    const myExps = loadedExpenses.filter(exp => {
-      if (exp.paid_by === me.id) return true;
-      if (exp.item_id && myItemIds.has(exp.item_id)) return true;
-      if (!exp.item_id) return true; // General expense involves everyone
-      return false;
-    });
-    setMyExpenses(myExps);
-
-    // Run calculation engine for all expenses
-    const memberIds = loadedMembers.map(m => m.id);
-    const rawExpenses: RawExpense[] = loadedExpenses.map(exp => {
-      const participants = exp.item_id && partMap[exp.item_id]
-        ? partMap[exp.item_id].map(p => ({ memberId: p.member_id, percentage: p.percentage ?? undefined }))
-        : memberIds.map(id => ({ memberId: id }));
-      return {
-        id: exp.id,
-        amount: Number(exp.amount),
-        paidBy: exp.paid_by,
-        splitType: exp.split_type as SplitType,
-        itemId: exp.item_id,
-        participants,
-      };
-    });
-
-    const result = computeSettlements(rawExpenses, memberIds, cancelledIds);
-    setBalance(result.balances[me.id] || 0);
-
-    // My settlements
-    const mySettles = result.settlements.filter(s => s.from === me.id || s.to === me.id);
-    setMySettlements(mySettles);
-
-    // Compute total paid by me
-    const paid = loadedExpenses
-      .filter(e => e.paid_by === me.id && !(e.item_id && cancelledIds.has(e.item_id)))
-      .reduce((s, e) => s + Number(e.amount), 0);
-    setTotalPaid(paid);
-
-    // Compute total share for me
-    let share = 0;
-    result.expenseDetails.forEach(exp => {
-      if (exp.shares[me.id]) share += exp.shares[me.id];
-    });
-    setTotalShare(Math.round(share * 100) / 100);
-
-    setLoading(false);
   }, [tripId]);
 
   useEffect(() => {

@@ -259,9 +259,6 @@ export default function ItineraryMap({
 
   return (
     <div className="relative w-full h-[380px] lg:h-[440px] rounded-2xl overflow-hidden border border-slate-200/90 shadow-sm bg-slate-100">
-      {/* Explicit CDN stylesheet link to guarantee Leaflet tiles and markers style correctly */}
-      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-
       {/* Map DOM Element */}
       <div ref={mapContainerRef} className="w-full h-full z-0" />
 

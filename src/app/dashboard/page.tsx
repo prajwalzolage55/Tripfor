@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/components/AuthProvider';
+import { getTrips, createTrip as dbCreateTrip, joinTripByCode } from '@/lib/db';
 import type { Trip } from '@/lib/types';
 import { Plane, Plus, LogIn, LogOut, MapPin, Calendar, Copy, Check, Loader2, Users } from 'lucide-react';
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { user: authUser, loading: authLoading, signOut } = useAuth();
   const [trips, setTrips] = useState<Trip[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -29,80 +31,60 @@ export default function DashboardPage() {
   const [joinError, setJoinError] = useState('');
 
   useEffect(() => {
-    checkAuthAndLoad();
-  }, []);
-
-  async function checkAuthAndLoad() {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
+    if (authLoading) return;
+    if (!authUser) {
       router.replace('/login');
       return;
     }
-    await loadTrips();
-  }
+    loadTrips();
+  }, [authLoading, authUser]);
 
   async function loadTrips() {
-    const { data } = await supabase
-      .from('trips')
-      .select('*')
-      .order('created_at', { ascending: false });
-    setTrips(data || []);
+    if (!authUser) return;
+    try {
+      const data = await getTrips(authUser.id);
+      setTrips(data || []);
+    } catch (err) {
+      console.error(err);
+    }
     setLoading(false);
   }
 
   async function createTrip(e: React.FormEvent) {
     e.preventDefault();
     setCreating(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!authUser) return;
 
-    const { data: trip, error } = await supabase
-      .from('trips')
-      .insert({
+    try {
+      const trip = await dbCreateTrip({
         name: tripName,
         destination: destination || null,
         start_date: startDate || null,
-        end_date: endDate || null,
-        created_by: user.id,
-      })
-      .select()
-      .single();
-
-    if (error) {
-      alert(error.message);
+        end_date: endDate || null
+      }, authUser.id, displayName || authUser.display_name || authUser.email?.split('@')[0] || 'Organizer');
+      
+      router.push(`/trip/${trip.id}/itinerary`);
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
       setCreating(false);
-      return;
     }
-
-    // Add self as a member
-    await supabase.from('trip_members').insert({
-      trip_id: trip.id,
-      user_id: user.id,
-      display_name: displayName || user.email?.split('@')[0] || 'Organizer',
-    });
-
-    setCreating(false);
-    router.push(`/trip/${trip.id}/itinerary`);
   }
 
   async function joinTrip(e: React.FormEvent) {
     e.preventDefault();
     setJoining(true);
     setJoinError('');
+    if (!authUser) return;
 
-    const { data, error } = await supabase.rpc('join_trip', {
-      p_code: inviteCode.trim().toLowerCase(),
-      p_display_name: joinName,
-    });
-
-    if (error) {
-      setJoinError(error.message);
+    try {
+      const tripId = await joinTripByCode(inviteCode.trim(), authUser.id, joinName);
+      router.push(`/trip/${tripId}/itinerary`);
+    } catch (err: any) {
+      setJoinError(err.message);
+    } finally {
       setJoining(false);
-      return;
     }
-
-    setJoining(false);
-    router.push(`/trip/${data}/itinerary`);
   }
 
   async function copyCode(code: string) {
@@ -111,8 +93,8 @@ export default function DashboardPage() {
     setTimeout(() => setCopiedCode(''), 2000);
   }
 
-  async function handleSignOut() {
-    await supabase.auth.signOut();
+  function handleSignOut() {
+    signOut();
     router.replace('/login');
   }
 

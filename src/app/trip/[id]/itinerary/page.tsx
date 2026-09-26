@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { db } from '@/lib/firebase';
+import { collection, query, where, getDoc, getDocs, doc, setDoc, deleteDoc, orderBy } from 'firebase/firestore';
 import type {
   ItineraryItem,
   TripMember,
@@ -134,25 +135,35 @@ export default function ItineraryPage() {
   // Load everything
   const loadData = useCallback(async () => {
     try {
-      const [
-        tripRes,
-        prefRes,
-        daysRes,
-        itemsRes,
-        membersRes,
-      ] = await Promise.all([
-        supabase.from('trips').select('*').eq('id', tripId).single(),
-        supabase.from('trip_preferences').select('*').eq('trip_id', tripId).maybeSingle(),
-        supabase.from('itinerary_days').select('*').eq('trip_id', tripId).order('day_index', { ascending: true }),
-        supabase.from('itinerary_items').select('*, location:locations(*)').eq('trip_id', tripId).order('start_time', { ascending: true, nullsFirst: false }),
-        supabase.from('trip_members').select('*').eq('trip_id', tripId),
+      const tripDoc = await getDoc(doc(db, 'trips', tripId));
+      if (tripDoc.exists()) setTrip({ id: tripDoc.id, ...tripDoc.data() } as unknown as Trip);
+      
+      const prefsQ = query(collection(db, 'trip_preferences'), where('trip_id', '==', tripId));
+      const prefsRes = await getDocs(prefsQ);
+      if (!prefsRes.empty) setPreferences({ id: prefsRes.docs[0].id, ...prefsRes.docs[0].data() } as unknown as TripPreferences);
+      
+      const daysQ = query(collection(db, 'itinerary_days'), where('trip_id', '==', tripId), orderBy('day_index', 'asc'));
+      const itemsQ = query(collection(db, 'itinerary_items'), where('trip_id', '==', tripId), orderBy('start_time', 'asc'));
+      const memQ = query(collection(db, 'trip_members'), where('trip_id', '==', tripId));
+      const locQ = query(collection(db, 'locations')); // Load all locations for now, or just the ones needed
+
+      const [daysRes, itemsRes, membersRes, locRes] = await Promise.all([
+        getDocs(daysQ),
+        getDocs(itemsQ),
+        getDocs(memQ),
+        getDocs(locQ),
       ]);
 
-      if (tripRes.data) setTrip(tripRes.data);
-      if (prefRes.data) setPreferences(prefRes.data);
-      const loadedDays = daysRes.data || [];
-      const loadedItems = itemsRes.data || [];
-      const loadedMembers = membersRes.data || [];
+      const loadedDays = daysRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as ItineraryDayRecord));
+      let loadedItems = itemsRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as ItineraryItem));
+      const loadedMembers = membersRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as TripMember));
+      
+      const locMap: Record<string, any> = {};
+      locRes.docs.forEach(d => locMap[d.id] = { id: d.id, ...d.data() });
+      loadedItems = loadedItems.map(item => ({
+        ...item,
+        location: item.location_id ? locMap[item.location_id] : undefined
+      }));
 
       setDays(loadedDays);
       setItems(loadedItems);
@@ -160,16 +171,16 @@ export default function ItineraryPage() {
 
       // Load participants
       if (loadedItems.length > 0) {
-        const itemIds = loadedItems.map(i => i.id);
-        const { data: allParts } = await supabase
-          .from('item_participants')
-          .select('*')
-          .in('item_id', itemIds);
-
+        const partsQ = query(collection(db, 'item_participants'));
+        const partsRes = await getDocs(partsQ);
+        const parts = partsRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as ItemParticipant));
+        const activeIds = new Set(loadedItems.map(i => i.id));
         const map: Record<string, ItemParticipant[]> = {};
-        (allParts || []).forEach(p => {
-          if (!map[p.item_id]) map[p.item_id] = [];
-          map[p.item_id].push(p);
+        parts.forEach(p => {
+          if (activeIds.has(p.item_id)) {
+            if (!map[p.item_id]) map[p.item_id] = [];
+            map[p.item_id].push(p);
+          }
         });
         setParticipantsMap(map);
       }
@@ -308,13 +319,13 @@ export default function ItineraryPage() {
 
     try {
       for (const item of recalculated) {
-        await supabase.from('itinerary_items').update({
+        await setDoc(doc(db, 'itinerary_items', item.id), {
           start_time: item.start_time,
           end_time: item.end_time,
           estimated_travel_time: item.estimated_travel_time,
           travel_distance_km: item.travel_distance_km,
           conflicts: item.conflicts,
-        }).eq('id', item.id);
+        }, { merge: true });
       }
     } catch (err) {
       console.error('Error saving reordered sequence:', err);
@@ -342,11 +353,11 @@ export default function ItineraryPage() {
         newEndTime = `${targetDay.day_date}T${timePart}`;
       }
 
-      await supabase.from('itinerary_items').update({
+      await setDoc(doc(db, 'itinerary_items', movingDayItem.id), {
         itinerary_day_id: targetDay.id,
         start_time: newStartTime,
         end_time: newEndTime,
-      }).eq('id', movingDayItem.id);
+      }, { merge: true });
 
       setMovingDayItem(null);
       await loadData();
@@ -360,7 +371,7 @@ export default function ItineraryPage() {
     if (!swappingItem) return;
 
     try {
-      await supabase.from('locations').upsert({
+      await setDoc(doc(db, 'locations', alternative.id), {
         id: alternative.id,
         name: alternative.name,
         category: alternative.category,
@@ -375,12 +386,12 @@ export default function ItineraryPage() {
         best_time_to_visit: alternative.best_time_to_visit,
       });
 
-      await supabase.from('itinerary_items').update({
+      await setDoc(doc(db, 'itinerary_items', swappingItem.id), {
         label: alternative.name,
         location_id: alternative.id,
         short_description: alternative.description,
         cost: alternative.entry_fee + alternative.estimated_spending,
-      }).eq('id', swappingItem.id);
+      }, { merge: true });
 
       setSwappingItem(null);
       await loadData();
@@ -479,14 +490,16 @@ export default function ItineraryPage() {
           sanitizedType === 'transfer' ? 'transit' : 
           sanitizedType === 'hotel' ? 'hotel' : 'attraction';
 
-        const { error: locErr } = await supabase.from('locations').upsert({
+        const { error: locErr } = await setDoc(doc(db, 'locations', locId), {
           id: locId,
           name: formLocationName.trim() || formLabel.trim(),
           category: locCategory,
           address: formAddress.trim() || null,
           latitude: formLatitude ? parseFloat(formLatitude) : null,
           longitude: formLongitude ? parseFloat(formLongitude) : null,
-        });
+        }, { merge: true })
+        .then(() => ({ error: null }))
+        .catch(err => ({ error: err }));
 
         if (!locErr) {
           locationId = locId;
@@ -512,21 +525,30 @@ export default function ItineraryPage() {
       let itemId = editingId;
 
       if (editingId) {
-        await supabase.from('itinerary_items').update(payload).eq('id', editingId);
+        await setDoc(doc(db, 'itinerary_items', editingId), payload, { merge: true });
       } else {
-        const { data, error } = await supabase.from('itinerary_items').insert(payload).select().single();
-        if (error) throw error;
-        if (data) itemId = data.id;
+        const newRef = doc(collection(db, 'itinerary_items'));
+        itemId = newRef.id;
+        await setDoc(newRef, { id: itemId, ...payload });
       }
 
       if (itemId) {
-        await supabase.from('item_participants').delete().eq('item_id', itemId);
+        const partsQ = query(collection(db, 'item_participants'), where('item_id', '==', itemId));
+        const partsRes = await getDocs(partsQ);
+        for (const p of partsRes.docs) {
+          await deleteDoc(p.ref);
+        }
+        
         if (formSelectedMembers.length > 0) {
-          const rows = formSelectedMembers.map(memberId => ({
-            item_id: itemId!,
-            member_id: memberId,
-          }));
-          await supabase.from('item_participants').insert(rows);
+          const promises = formSelectedMembers.map(memberId => {
+            const pRef = doc(collection(db, 'item_participants'));
+            return setDoc(pRef, {
+              id: pRef.id,
+              item_id: itemId!,
+              member_id: memberId,
+            });
+          });
+          await Promise.all(promises);
         }
       }
 
@@ -541,13 +563,13 @@ export default function ItineraryPage() {
 
   async function handleToggleStatus(item: ItineraryItem) {
     const newStatus = item.status === 'active' ? 'cancelled' : 'active';
-    await supabase.from('itinerary_items').update({ status: newStatus }).eq('id', item.id);
+    await setDoc(doc(db, 'itinerary_items', item.id), { status: newStatus }, { merge: true });
     loadData();
   }
 
   async function handleDeleteItem(id: string) {
     if (!confirm('Are you sure you want to remove this activity?')) return;
-    await supabase.from('itinerary_items').delete().eq('id', id);
+    await deleteDoc(doc(db, 'itinerary_items', id));
     loadData();
   }
 

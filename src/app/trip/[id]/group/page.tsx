@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { db } from '@/lib/firebase';
+import { collection, query, where, getDocs, setDoc, doc, deleteDoc } from 'firebase/firestore';
 import { computeSettlements, type RawExpense } from '@/lib/engine';
 import type { Expense, ItineraryItem, TripMember, ItemParticipant, SplitType } from '@/lib/types';
 import type { Settlement } from '@/lib/engine';
@@ -31,15 +32,19 @@ export default function GroupPage() {
   const [memberSpendData, setMemberSpendData] = useState<{ name: string; paid: number; owes: number }[]>([]);
 
   const loadData = useCallback(async () => {
+    const memQ = query(collection(db, 'trip_members'), where('trip_id', '==', tripId));
+    const expQ = query(collection(db, 'expenses'), where('trip_id', '==', tripId));
+    const itemQ = query(collection(db, 'itinerary_items'), where('trip_id', '==', tripId));
+
     const [memRes, expRes, itemRes] = await Promise.all([
-      supabase.from('trip_members').select('*').eq('trip_id', tripId),
-      supabase.from('expenses').select('*').eq('trip_id', tripId),
-      supabase.from('itinerary_items').select('*').eq('trip_id', tripId),
+      getDocs(memQ),
+      getDocs(expQ),
+      getDocs(itemQ),
     ]);
 
-    const loadedMembers = memRes.data || [];
-    const loadedExpenses = expRes.data || [];
-    const loadedItems = itemRes.data || [];
+    const loadedMembers = memRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as TripMember));
+    const loadedExpenses = expRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as Expense));
+    const loadedItems = itemRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as ItineraryItem));
 
     setMembers(loadedMembers);
     setExpenses(loadedExpenses);
@@ -49,12 +54,11 @@ export default function GroupPage() {
     const cancelledIds = new Set(loadedItems.filter(i => i.status === 'cancelled').map(i => i.id));
 
     // Load all item_participants
-    const activeItemIds = loadedItems.filter(i => i.status === 'active').map(i => i.id);
-    let allParts: ItemParticipant[] = [];
-    if (activeItemIds.length > 0) {
-      const { data } = await supabase.from('item_participants').select('*').in('item_id', activeItemIds);
-      allParts = data || [];
-    }
+    const partsQ = query(collection(db, 'item_participants'));
+    const partsRes = await getDocs(partsQ);
+    const allPartsRaw = partsRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as ItemParticipant));
+    const activeItemIds = new Set(loadedItems.filter(i => i.status === 'active').map(i => i.id));
+    const allParts = allPartsRaw.filter(p => activeItemIds.has(p.item_id));
 
     // Build participant map
     const partMap: Record<string, ItemParticipant[]> = {};
@@ -85,24 +89,28 @@ export default function GroupPage() {
     setSettlements(result.settlements);
 
     // Load existing settlement statuses from DB
-    const { data: existingSettlements } = await supabase
-      .from('settlements')
-      .select('*')
-      .eq('trip_id', tripId);
+    const settleQ = query(collection(db, 'settlements'), where('trip_id', '==', tripId));
+    const settleRes = await getDocs(settleQ);
+    const existingSettlements = settleRes.docs.map(d => ({ id: d.id, ...d.data() } as Record<string, any>));
     
     const statusMap: Record<string, 'pending' | 'paid'> = {};
-    (existingSettlements || []).forEach(s => {
+    existingSettlements.forEach(s => {
       const key = `${s.from_member}-${s.to_member}`;
-      statusMap[key] = s.status;
+      statusMap[key] = s.status as 'pending' | 'paid';
     });
     setSettlementStatuses(statusMap);
 
     // Save settlements to DB (regenerate snapshot)
-    await supabase.from('settlements').delete().eq('trip_id', tripId);
+    for (const oldSettle of settleRes.docs) {
+      await deleteDoc(oldSettle.ref);
+    }
+    
     if (result.settlements.length > 0) {
-      const rows = result.settlements.map(s => {
+      const promises = result.settlements.map(s => {
         const key = `${s.from}-${s.to}`;
-        return {
+        const sRef = doc(collection(db, 'settlements'));
+        return setDoc(sRef, {
+          id: sRef.id,
           trip_id: tripId,
           from_member: s.from,
           to_member: s.to,
@@ -112,9 +120,9 @@ export default function GroupPage() {
             loadedMembers.find(m => m.id === s.to)?.display_name || '',
             s.amount
           ),
-        };
+        });
       });
-      await supabase.from('settlements').insert(rows);
+      await Promise.all(promises);
     }
 
     // Build category chart data

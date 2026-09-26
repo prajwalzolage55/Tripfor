@@ -10,11 +10,11 @@
     "test": "node src/lib/__tests__/engine.test.mjs"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.45.0",
     "@types/leaflet": "^1.9.22",
+    "firebase": "^12.19.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.400.0",
-    "next": "15.3.3",
+    "next": "^15.5.26",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "recharts": "^2.12.0"

@@ -2,11 +2,15 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
-import { Plane, Mail, Lock, User, Phone, ArrowRight, Loader2, Eye, EyeOff, CheckCircle } from 'lucide-react';
+import { auth, db } from '@/lib/firebase';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { doc, setDoc } from 'firebase/firestore';
+import { useAuth } from '@/components/AuthProvider';
+import { Plane, Mail, Lock, User, Phone, ArrowRight, Loader2, Eye, EyeOff } from 'lucide-react';
 
 export default function SignupPage() {
   const router = useRouter();
+  const { setUser } = useAuth();
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -14,14 +18,11 @@ export default function SignupPage() {
   const [phone, setPhone] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setSuccess('');
 
     if (password !== confirmPassword) {
       setError('Passwords do not match.');
@@ -33,7 +34,6 @@ export default function SignupPage() {
       return;
     }
 
-    // Validate phone: must be 10 digits (Indian mobile)
     const cleanPhone = phone.replace(/[\s\-+]/g, '');
     if (cleanPhone.length < 10) {
       setError('Please enter a valid 10-digit mobile number (this will be your UPI ID).');
@@ -42,51 +42,40 @@ export default function SignupPage() {
 
     setLoading(true);
 
-    const { data, error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          display_name: displayName.trim(),
-          phone: cleanPhone,
-        },
-      },
-    });
+    try {
+      // Create user with Firebase Auth
+      const userCredential = await createUserWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
+      const user = userCredential.user;
 
-    if (signUpError) {
-      setError(signUpError.message);
-      setLoading(false);
-      return;
-    }
-
-    // Save profile to user_profiles table
-    if (data?.user) {
-      await supabase.from('user_profiles').upsert({
-        id: data.user.id,
+      // Insert new user into Firestore
+      const userProfile = {
+        id: user.uid,
         display_name: displayName.trim(),
+        email: email.trim().toLowerCase(),
         phone: cleanPhone,
-        email: email.trim(),
+        avatar_url: null,
+      };
+
+      try {
+        await setDoc(doc(db, 'user_profiles', user.uid), userProfile);
+      } catch (docErr) {
+        console.warn('Could not save user profile doc to Firestore:', docErr);
+      }
+
+      // Auto-login after signup
+      setUser({
+        id: user.uid,
+        display_name: userProfile.display_name,
+        email: userProfile.email,
+        phone: userProfile.phone,
+        avatar_url: userProfile.avatar_url,
       });
-    }
 
-    setSuccess('Account created! Check your email for a confirmation link, then sign in.');
-    setLoading(false);
-  };
-
-  const handleGoogleSignup = async () => {
-    setGoogleLoading(true);
-    setError('');
-
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
-
-    if (error) {
-      setError(error.message);
-      setGoogleLoading(false);
+      router.push('/dashboard');
+    } catch (err: any) {
+      setError(err.message || 'An error occurred during signup.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -240,18 +229,6 @@ export default function SignupPage() {
           font-size: 0.8125rem;
           font-weight: 500;
         }
-        .auth-success {
-          padding: 0.75rem 1rem;
-          border-radius: 0.625rem;
-          background: rgba(34, 197, 94, 0.08);
-          border: 1px solid rgba(34, 197, 94, 0.15);
-          color: #22c55e;
-          font-size: 0.8125rem;
-          font-weight: 500;
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-        }
         .auth-btn-primary {
           display: inline-flex;
           align-items: center;
@@ -281,49 +258,6 @@ export default function SignupPage() {
           cursor: not-allowed;
           transform: none;
         }
-        .auth-divider {
-          display: flex;
-          align-items: center;
-          gap: 1rem;
-          color: var(--color-text-muted);
-          font-size: 0.75rem;
-          text-transform: uppercase;
-          letter-spacing: 0.08em;
-          margin: 0.125rem 0;
-        }
-        .auth-divider::before, .auth-divider::after {
-          content: '';
-          flex: 1;
-          height: 1px;
-          background: var(--color-surface-200);
-        }
-        .google-btn {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          gap: 0.625rem;
-          padding: 0.75rem 1.25rem;
-          font-size: 0.875rem;
-          font-weight: 600;
-          color: var(--color-text-primary);
-          background: var(--color-surface-0);
-          border: 1.5px solid var(--color-surface-200);
-          border-radius: 0.75rem;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          width: 100%;
-          font-family: var(--font-sans);
-        }
-        .google-btn:hover {
-          background: var(--color-surface-50);
-          border-color: var(--color-surface-300);
-          box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-        }
-        .google-btn:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-        .google-btn svg { flex-shrink: 0; }
         .auth-footer {
           text-align: center;
           font-size: 0.85rem;
@@ -357,136 +291,104 @@ export default function SignupPage() {
         </p>
 
         {error && <div className="auth-error">{error}</div>}
-        {success && (
-          <div className="auth-success">
-            <CheckCircle size={16} />
-            {success}
+
+        <form onSubmit={handleSignup} className="auth-form">
+          <div className="auth-form-group">
+            <label>Full Name</label>
+            <div className="auth-input-wrap">
+              <User size={16} className="auth-icon" />
+              <input
+                type="text"
+                placeholder="John Doe"
+                value={displayName}
+                onChange={e => setDisplayName(e.target.value)}
+                required
+                autoComplete="name"
+              />
+            </div>
           </div>
-        )}
 
-        {!success ? (
-          <form onSubmit={handleSignup} className="auth-form">
-            <div className="auth-form-group">
-              <label>Full Name</label>
-              <div className="auth-input-wrap">
-                <User size={16} className="auth-icon" />
-                <input
-                  type="text"
-                  placeholder="John Doe"
-                  value={displayName}
-                  onChange={e => setDisplayName(e.target.value)}
-                  required
-                  autoComplete="name"
-                />
-              </div>
+          <div className="auth-form-group">
+            <label>Email Address</label>
+            <div className="auth-input-wrap">
+              <Mail size={16} className="auth-icon" />
+              <input
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                required
+                autoComplete="email"
+              />
             </div>
-
-            <div className="auth-form-group">
-              <label>Email Address</label>
-              <div className="auth-input-wrap">
-                <Mail size={16} className="auth-icon" />
-                <input
-                  type="email"
-                  placeholder="you@example.com"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  required
-                  autoComplete="email"
-                />
-              </div>
-            </div>
-
-            <div className="auth-form-group">
-              <label>Mobile Number (UPI)</label>
-              <div className="auth-input-wrap">
-                <Phone size={16} className="auth-icon" />
-                <input
-                  type="tel"
-                  placeholder="9876543210"
-                  value={phone}
-                  onChange={e => setPhone(e.target.value)}
-                  required
-                  autoComplete="tel"
-                  pattern="[0-9+\-\s]{10,15}"
-                />
-              </div>
-              <span className="helper-text">
-                This number will be used as your UPI ID for trip payments
-              </span>
-            </div>
-
-            <div className="auth-row">
-              <div className="auth-form-group">
-                <label>Password</label>
-                <div className="auth-input-wrap">
-                  <Lock size={16} className="auth-icon" />
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    placeholder="Min 6 characters"
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    required
-                    minLength={6}
-                    autoComplete="new-password"
-                    style={{ paddingRight: '2.5rem' }}
-                  />
-                  <button
-                    type="button"
-                    className="password-toggle"
-                    onClick={() => setShowPassword(!showPassword)}
-                    tabIndex={-1}
-                  >
-                    {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
-                  </button>
-                </div>
-              </div>
-
-              <div className="auth-form-group">
-                <label>Confirm Password</label>
-                <div className="auth-input-wrap">
-                  <Lock size={16} className="auth-icon" />
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    placeholder="Re-enter password"
-                    value={confirmPassword}
-                    onChange={e => setConfirmPassword(e.target.value)}
-                    required
-                    minLength={6}
-                    autoComplete="new-password"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <button type="submit" className="auth-btn-primary" disabled={loading}>
-              {loading ? <Loader2 size={16} className="spin" /> : <ArrowRight size={16} />}
-              Create Account
-            </button>
-
-            <div className="auth-divider"><span>or sign up with</span></div>
-
-            <button type="button" className="google-btn" onClick={handleGoogleSignup} disabled={googleLoading}>
-              {googleLoading ? (
-                <Loader2 size={18} className="spin" />
-              ) : (
-                <svg width="18" height="18" viewBox="0 0 48 48">
-                  <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-                  <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-                  <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
-                  <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
-                </svg>
-              )}
-              Continue with Google
-            </button>
-          </form>
-        ) : (
-          <div style={{ textAlign: 'center', marginTop: '1rem' }}>
-            <a href="/login" className="auth-btn-primary" style={{ textDecoration: 'none', display: 'inline-flex' }}>
-              <ArrowRight size={16} />
-              Go to Sign In
-            </a>
           </div>
-        )}
+
+          <div className="auth-form-group">
+            <label>Mobile Number (UPI)</label>
+            <div className="auth-input-wrap">
+              <Phone size={16} className="auth-icon" />
+              <input
+                type="tel"
+                placeholder="9876543210"
+                value={phone}
+                onChange={e => setPhone(e.target.value)}
+                required
+                autoComplete="tel"
+              />
+            </div>
+            <span className="helper-text">
+              This number will be used as your UPI ID for trip payments
+            </span>
+          </div>
+
+          <div className="auth-row">
+            <div className="auth-form-group">
+              <label>Password</label>
+              <div className="auth-input-wrap">
+                <Lock size={16} className="auth-icon" />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Min 6 characters"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  autoComplete="new-password"
+                  style={{ paddingRight: '2.5rem' }}
+                />
+                <button
+                  type="button"
+                  className="password-toggle"
+                  onClick={() => setShowPassword(!showPassword)}
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              </div>
+            </div>
+
+            <div className="auth-form-group">
+              <label>Confirm Password</label>
+              <div className="auth-input-wrap">
+                <Lock size={16} className="auth-icon" />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Re-enter password"
+                  value={confirmPassword}
+                  onChange={e => setConfirmPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  autoComplete="new-password"
+                />
+              </div>
+            </div>
+          </div>
+
+          <button type="submit" className="auth-btn-primary" disabled={loading}>
+            {loading ? <Loader2 size={16} className="spin" /> : <ArrowRight size={16} />}
+            Create Account
+          </button>
+        </form>
 
         <div className="auth-footer">
           Already have an account?{' '}

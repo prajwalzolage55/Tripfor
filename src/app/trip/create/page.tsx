@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/components/AuthProvider';
+import { createTrip, saveTripPreferences } from '@/lib/db';
 import { generateTripItinerary } from '@/lib/generate';
 import { ChevronRight, ChevronLeft, Loader2, Plane, MapPin, Calendar, Users, IndianRupee, Activity, Navigation, Coffee, Home, Sparkles } from 'lucide-react';
 
@@ -12,6 +13,7 @@ const TRANSPORT_LIST = ['Walking', 'Public transport', 'Taxi', 'Rental car', 'Re
 
 export default function CreateTripWizard() {
   const router = useRouter();
+  const { user: authUser } = useAuth();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
 
@@ -46,30 +48,18 @@ export default function CreateTripWizard() {
   async function handleCreateTrip() {
     setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      if (!authUser) throw new Error('Not authenticated');
 
-      // 1. Create Trip
-      const { data: trip, error: tripErr } = await supabase.from('trips').insert({
+      // 1 & 2. Create Trip & Add as member
+      const trip = await createTrip({
         name: tripName,
         destination,
         start_date: startDate || null,
-        end_date: endDate || null,
-        created_by: user.id
-      }).select().single();
-      
-      if (tripErr) throw tripErr;
-
-      // 2. Add as member
-      const { error: memberErr } = await supabase.from('trip_members').insert({
-        trip_id: trip.id,
-        user_id: user.id,
-        display_name: displayName || user.email?.split('@')[0] || 'Organizer'
-      });
-      if (memberErr) throw memberErr;
+        end_date: endDate || null
+      }, authUser.id, displayName || authUser.display_name || authUser.email?.split('@')[0] || 'Organizer');
 
       // 3. Save Preferences
-      const { error: prefErr } = await supabase.from('trip_preferences').insert({
+      await saveTripPreferences({
         trip_id: trip.id,
         total_budget: budget ? parseFloat(budget) : null,
         travel_style: travelStyle,
@@ -79,10 +69,9 @@ export default function CreateTripWizard() {
         accommodation_preference: accommodation,
         special_requirements: specialReqs
       });
-      if (prefErr) throw prefErr;
 
       // 4. Generate the itinerary using the hybrid engine
-      await generateTripItinerary(trip.id, supabase);
+      await generateTripItinerary(trip.id);
 
       // Finish & Redirect to generated dashboard
       router.push(`/trip/${trip.id}/itinerary`);

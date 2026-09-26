@@ -1,4 +1,5 @@
-import { SupabaseClient } from '@supabase/supabase-js';
+import { db } from './firebase';
+import { collection, doc, getDoc, getDocs, query, where, setDoc, addDoc, deleteDoc } from 'firebase/firestore';
 import { buildDeterministicItinerary, Location, TripPreferences } from './itinerary-engine';
 
 const ALIBAG_LOCATIONS: Location[] = [
@@ -20,12 +21,15 @@ const DEFAULT_LOCATIONS: Location[] = [
   { id: '66666666-6666-6666-6666-666666666666', name: 'Sunset Cruise', category: 'activity', latitude: 15.51, longitude: 73.75, recommendedDurationMinutes: 90, entryFee: 30, estimatedSpending: 15, openingHours: { open: "16:00", close: "19:00" } }
 ];
 
-export async function generateTripItinerary(tripId: string, supabase: SupabaseClient) {
+export async function generateTripItinerary(tripId: string) {
   // 1. Fetch Trip & Preferences
-  const { data: trip } = await supabase.from('trips').select('*').eq('id', tripId).single();
-  const { data: prefs } = await supabase.from('trip_preferences').select('*').eq('trip_id', tripId).maybeSingle();
+  const tripDoc = await getDoc(doc(db, 'trips', tripId));
+  if (!tripDoc.exists()) throw new Error("Trip not found");
+  const trip = tripDoc.data();
 
-  if (!trip) throw new Error("Trip not found");
+  const prefsQ = query(collection(db, 'trip_preferences'), where('trip_id', '==', tripId));
+  const prefsDocs = await getDocs(prefsQ);
+  const prefs = prefsDocs.empty ? null : prefsDocs.docs[0].data();
 
   const preferences: TripPreferences = {
     totalBudget: prefs?.total_budget || null,
@@ -48,7 +52,7 @@ export async function generateTripItinerary(tripId: string, supabase: SupabaseCl
 
   // Save locations to DB to act as the cache
   for (const loc of locationPool) {
-    await supabase.from('locations').upsert({
+    await setDoc(doc(db, 'locations', loc.id), {
       id: loc.id,
       name: loc.name,
       category: loc.category,
@@ -58,29 +62,33 @@ export async function generateTripItinerary(tripId: string, supabase: SupabaseCl
       entry_fee: loc.entryFee,
       estimated_spending: loc.estimatedSpending,
       opening_hours: loc.openingHours
-    });
+    }, { merge: true });
   }
 
   // 3. Clear existing itinerary items and days for this trip so regeneration doesn't collide
-  await supabase.from('itinerary_items').delete().eq('trip_id', tripId);
-  await supabase.from('itinerary_days').delete().eq('trip_id', tripId);
+  const oldItems = await getDocs(query(collection(db, 'itinerary_items'), where('trip_id', '==', tripId)));
+  for (const item of oldItems.docs) {
+    await deleteDoc(item.ref);
+  }
+  
+  const oldDays = await getDocs(query(collection(db, 'itinerary_days'), where('trip_id', '==', tripId)));
+  for (const day of oldDays.docs) {
+    await deleteDoc(day.ref);
+  }
 
   // 4. Build Deterministic Itinerary
   const days = buildDeterministicItinerary(preferences, locationPool);
 
   // 5. Save to DB
   for (const day of days) {
-    const { data: dayRecord, error: dayErr } = await supabase.from('itinerary_days').insert({
+    const dayRef = doc(collection(db, 'itinerary_days'));
+    await setDoc(dayRef, {
+      id: dayRef.id,
       trip_id: tripId,
       day_date: day.date,
       day_index: day.dayIndex,
       title: day.title
-    }).select().single();
-
-    if (dayErr || !dayRecord) {
-      console.error('Error creating day record:', dayErr);
-      continue;
-    }
+    });
 
     const itemsToInsert = day.items.map(item => {
       let type = 'activity';
@@ -94,9 +102,11 @@ export async function generateTripItinerary(tripId: string, supabase: SupabaseCl
       const [eh, em] = item.endTime.split(':').map(Number);
       const endTz = new Date(new Date(d).setHours(eh, em, 0)).toISOString();
 
-      return {
+      const itemRef = doc(collection(db, 'itinerary_items'));
+      return setDoc(itemRef, {
+        id: itemRef.id,
         trip_id: tripId,
-        itinerary_day_id: dayRecord.id,
+        itinerary_day_id: dayRef.id,
         location_id: item.locationId || null,
         type,
         label: item.title,
@@ -107,11 +117,11 @@ export async function generateTripItinerary(tripId: string, supabase: SupabaseCl
         estimated_travel_time: `${item.estimatedTravelTimeMinutes} minutes`,
         travel_distance_km: item.travelDistanceKm,
         conflicts: item.conflicts
-      };
+      });
     });
 
     if (itemsToInsert.length > 0) {
-      await supabase.from('itinerary_items').insert(itemsToInsert);
+      await Promise.all(itemsToInsert);
     }
   }
 

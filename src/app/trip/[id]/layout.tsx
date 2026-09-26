@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, usePathname, useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { getTrip } from '@/lib/db';
+import { useAuth } from '@/components/AuthProvider';
 import type { Trip, TripMember } from '@/lib/types';
 import { Plane, Map, Receipt, Users, User, ArrowLeft, Copy, Check } from 'lucide-react';
 
@@ -20,21 +21,22 @@ export default function TripLayout({ children }: { children: React.ReactNode }) 
   const tripId = params.id as string;
   const [trip, setTrip] = useState<Trip | null>(null);
   const [copied, setCopied] = useState(false);
+  const { user: authUser, loading: authLoading } = useAuth();
 
   const activeTab = pathname.split('/').pop() || 'itinerary';
 
   useEffect(() => {
+    if (authLoading) return;
+    if (!authUser) {
+      router.replace('/login');
+      return;
+    }
     async function load() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        router.replace('/login');
-        return;
-      }
-      const { data } = await supabase.from('trips').select('*').eq('id', tripId).single();
+      const data = await getTrip(tripId);
       if (data) setTrip(data);
     }
     load();
-  }, [tripId, router]);
+  }, [tripId, router, authUser, authLoading]);
 
   async function copyInvite() {
     if (trip) {
