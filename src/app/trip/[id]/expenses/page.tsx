@@ -9,7 +9,7 @@ import { dispatchExpenseNotification } from '@/lib/notifications';
 import { appendEvent } from '@/lib/ledger';
 import type { ExpenseAddedPayload, ExpenseDeletedPayload } from '@/lib/ledger';
 import type { Expense, ItineraryItem, TripMember, ItemParticipant, SplitType } from '@/lib/types';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, type Variants } from 'framer-motion';
 import {
   Plus, Receipt, DollarSign, Upload, X, Loader2, Check, User, Tag, Trash2,
   Compass, Map, Sparkles
@@ -30,7 +30,7 @@ const SPLIT_OPTIONS: { value: SplitType; label: string }[] = [
 ];
 
 /* ── Framer Motion Variants ── */
-const staggerList = {
+const staggerList: Variants = {
   hidden: { opacity: 0 },
   show: {
     opacity: 1,
@@ -38,7 +38,7 @@ const staggerList = {
   }
 };
 
-const listItem = {
+const listItem: Variants = {
   hidden: { opacity: 0, y: 20 },
   show: {
     opacity: 1, y: 0,
@@ -46,7 +46,7 @@ const listItem = {
   }
 };
 
-const modalVariants = {
+const modalVariants: Variants = {
   hidden: { opacity: 0, scale: 0.95, y: 20 },
   visible: {
     opacity: 1, scale: 1, y: 0,

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { getTrips, createTrip as dbCreateTrip, joinTripByCode } from '@/lib/db';
 import type { Trip } from '@/lib/types';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, type Variants } from 'framer-motion';
 import { ReactLenis } from 'lenis/react';
 import {
   Plane, Plus, LogIn, LogOut, MapPin, Calendar, Copy, Check,
@@ -20,7 +20,7 @@ const COLORS = {
   rose: '#d05461'
 };
 
-const staggerContainer = {
+const staggerContainer: Variants = {
   hidden: { opacity: 0 },
   show: {
     opacity: 1,
@@ -28,7 +28,7 @@ const staggerContainer = {
   }
 };
 
-const fadeUp = {
+const fadeUp: Variants = {
   hidden: { opacity: 0, y: 30 },
   show: {
     opacity: 1, y: 0,
@@ -36,7 +36,7 @@ const fadeUp = {
   }
 };
 
-const modalVariants = {
+const modalVariants: Variants = {
   hidden: { opacity: 0, scale: 0.95, y: 20 },
   visible: {
     opacity: 1, scale: 1, y: 0,
