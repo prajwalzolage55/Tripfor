@@ -35,21 +35,22 @@ npm install
 2. Go to SQL Editor and run the contents of `supabase-schema.sql`
 3. Copy your project URL and anon key from Settings → API
 
-### 3. Set up Cloudinary (optional, for receipt uploads)
+### 3. Environment variables
 
-1. Create a Cloudinary account
-2. Go to Settings → Upload → Add Upload Preset → set to **Unsigned**
-3. Copy your cloud name and preset name
-
-### 4. Environment variables
-
-Create `.env.local` (see `.env.local.example`):
+Create `.env.local`:
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=your-cloud-name
-NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET=your-preset-name
+
+# Firebase
+NEXT_PUBLIC_FIREBASE_API_KEY=your-api-key
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=your-project-id
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your-project.firebasestorage.app
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your-sender-id
+NEXT_PUBLIC_FIREBASE_APP_ID=your-app-id
+NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=your-measurement-id
 ```
 
 ### 5. Run locally

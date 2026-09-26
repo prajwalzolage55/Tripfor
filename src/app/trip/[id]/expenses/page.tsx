@@ -101,29 +101,24 @@ export default function ExpensesPage() {
   }, [loadData]);
 
   async function uploadReceipt(file: File) {
-    const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
-    const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
-    if (!cloudName || !uploadPreset) {
-      alert('Cloudinary not configured');
-      return;
-    }
-
+    if (!file) return;
     setUploading(true);
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', uploadPreset);
 
     try {
-      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
-        method: 'POST',
-        body: formData,
-      });
-      const data = await res.json();
-      setFormReceipt(data.secure_url);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormReceipt(reader.result as string);
+        setUploading(false);
+      };
+      reader.onerror = () => {
+        alert('Failed to read receipt image file');
+        setUploading(false);
+      };
+      reader.readAsDataURL(file);
     } catch {
       alert('Upload failed');
+      setUploading(false);
     }
-    setUploading(false);
   }
 
   async function saveExpense(e: React.FormEvent) {
