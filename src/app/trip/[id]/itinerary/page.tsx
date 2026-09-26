@@ -78,13 +78,13 @@ const SPLIT_OPTIONS: { value: SplitType; label: string }[] = [
   { value: 'organizer_paid', label: 'Organizer Paid (no split)' },
 ];
 
-const POPULAR_SPOTS_ALIBAG = [
-  { name: 'Kolaba Sea Fort', address: 'Near Alibag Beach', lat: 18.6300, lng: 72.8600, cat: 'attraction' },
-  { name: 'Alibag Beach', address: 'Beach Rd, Alibag', lat: 18.6414, lng: 72.8722, cat: 'attraction' },
-  { name: 'Varsoli Beach', address: 'Varsoli, Alibag', lat: 18.6600, lng: 72.8700, cat: 'attraction' },
+const POPULAR_SPOTS_ALIBAG: { name: string; address: string; lat: number; lng: number; cat: ItemType }[] = [
+  { name: 'Kolaba Sea Fort', address: 'Near Alibag Beach', lat: 18.6300, lng: 72.8600, cat: 'activity' },
+  { name: 'Alibag Beach', address: 'Beach Rd, Alibag', lat: 18.6414, lng: 72.8722, cat: 'activity' },
+  { name: 'Varsoli Beach', address: 'Varsoli, Alibag', lat: 18.6600, lng: 72.8700, cat: 'activity' },
   { name: 'Mandwa Jetty & Beach', address: 'Mandwa, Alibag', lat: 18.7900, lng: 72.8800, cat: 'activity' },
   { name: 'Nagaon Beach', address: 'Nagaon, Alibag', lat: 18.5700, lng: 72.9000, cat: 'activity' },
-  { name: 'Kihim Beach', address: 'Kihim, Alibag', lat: 18.7200, lng: 72.8700, cat: 'attraction' },
+  { name: 'Kihim Beach', address: 'Kihim, Alibag', lat: 18.7200, lng: 72.8700, cat: 'activity' },
   { name: 'Sanman Restaurant', address: 'Alibag City Center', lat: 18.6450, lng: 72.8740, cat: 'dining' },
 ];
 
@@ -432,7 +432,23 @@ export default function ItineraryPage() {
     setFormAddress(preset.address);
     setFormLatitude(preset.lat.toString());
     setFormLongitude(preset.lng.toString());
-    if (preset.cat) setFormType(preset.cat as ItemType);
+    
+    // Normalize category to valid ItemType
+    let mappedType: ItemType = 'activity';
+    if (preset.cat === 'dining' || (preset as any).cat === 'restaurant') {
+      mappedType = 'dining';
+    } else if (preset.cat === 'transfer' || (preset as any).cat === 'transit') {
+      mappedType = 'transfer';
+    } else if (preset.cat === 'hotel') {
+      mappedType = 'hotel';
+    } else if (preset.cat === 'flight') {
+      mappedType = 'flight';
+    } else if (preset.cat === 'other') {
+      mappedType = 'other';
+    } else {
+      mappedType = 'activity';
+    }
+    setFormType(mappedType);
   }
 
   async function handleSaveItem(e: React.FormEvent) {
@@ -440,15 +456,33 @@ export default function ItineraryPage() {
     setSaving(true);
 
     try {
+      // Strictly enforce DB check constraint: ('flight','hotel','activity','transfer','dining','other')
+      const ALLOWED_ITEM_TYPES: ItemType[] = ['flight', 'hotel', 'activity', 'transfer', 'dining', 'other'];
+      let sanitizedType: ItemType = 'activity';
+      if (ALLOWED_ITEM_TYPES.includes(formType as ItemType)) {
+        sanitizedType = formType as ItemType;
+      } else if ((formType as string) === 'attraction') {
+        sanitizedType = 'activity';
+      } else if ((formType as string) === 'restaurant') {
+        sanitizedType = 'dining';
+      } else if ((formType as string) === 'transit') {
+        sanitizedType = 'transfer';
+      }
+
       let locationId: string | null = null;
 
       // If location information / coordinates are provided, upsert into locations table
       if (formLocationName.trim() || (formLatitude && formLongitude)) {
         const locId = crypto.randomUUID();
+        const locCategory = 
+          sanitizedType === 'dining' ? 'restaurant' : 
+          sanitizedType === 'transfer' ? 'transit' : 
+          sanitizedType === 'hotel' ? 'hotel' : 'attraction';
+
         const { error: locErr } = await supabase.from('locations').upsert({
           id: locId,
           name: formLocationName.trim() || formLabel.trim(),
-          category: formType === 'dining' ? 'restaurant' : formType === 'transfer' ? 'transit' : formType === 'hotel' ? 'hotel' : 'attraction',
+          category: locCategory,
           address: formAddress.trim() || null,
           latitude: formLatitude ? parseFloat(formLatitude) : null,
           longitude: formLongitude ? parseFloat(formLongitude) : null,
@@ -461,7 +495,7 @@ export default function ItineraryPage() {
 
       const payload: any = {
         trip_id: tripId,
-        type: formType,
+        type: sanitizedType,
         label: formLabel,
         start_time: formStartTime ? new Date(formStartTime).toISOString() : null,
         end_time: formEndTime ? new Date(formEndTime).toISOString() : null,
