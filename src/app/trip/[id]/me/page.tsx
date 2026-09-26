@@ -45,7 +45,7 @@ export default function PersonalImpactLensPage() {
   const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);
-  const [currentMember, setCurrentMember] = useState<TripMember | null>(null);
+  const [currentMember, setCurrentMember] = useState<any>(null);
   const [events, setEvents] = useState<LedgerEvent[]>([]);
   const [state, setState] = useState<TripState | null>(null);
   const [trace, setTrace] = useState<BalanceTrace[]>([]);
