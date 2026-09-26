@@ -18,6 +18,7 @@ import type {
 import { recalculateDaySequence, ALTERNATIVE_LOCATIONS } from '@/lib/itinerary-recalculate';
 import ItineraryMap from '@/components/ItineraryMap';
 import { geocodeLocation, isSampleActivity } from '@/lib/geocoding';
+import { appendEvent } from '@/lib/ledger';
 import {
   Plus, Plane, Hotel, Activity, Car, UtensilsCrossed, MoreHorizontal,
   Calendar, DollarSign, Users, X, Trash2, Edit3, Check, Ban, Loader2,
@@ -597,6 +598,45 @@ export default function ItineraryPage() {
           });
           await Promise.all(promises);
         }
+
+        // Emit immutable ledger event for booking
+        if (!editingId) {
+          appendEvent(
+            tripId,
+            'BOOKING_CREATED',
+            members[0]?.id || 'organizer',
+            {
+              itemId,
+              type: formType,
+              label: formLabel.trim(),
+              cost: formCost ? Number(formCost) : 0,
+              currency: 'INR',
+              defaultSplitType: formSplitType,
+              participantMemberIds: formSelectedMembers.length > 0 ? formSelectedMembers : members.map(m => m.id),
+              startTime: formStartTime || null,
+              endTime: formEndTime || null,
+              vendorName: null,
+              cancellationPolicy: null,
+            }
+          ).catch(e => console.warn('Ledger event error:', e));
+        } else {
+          appendEvent(
+            tripId,
+            'BOOKING_UPDATED',
+            members[0]?.id || 'organizer',
+            {
+              itemId,
+              changes: {
+                label: formLabel.trim(),
+                cost: formCost ? Number(formCost) : 0,
+                startTime: formStartTime || undefined,
+                endTime: formEndTime || undefined,
+                defaultSplitType: formSplitType,
+              },
+              previousValues: {},
+            }
+          ).catch(e => console.warn('Ledger event error:', e));
+        }
       }
 
       setShowForm(false);
@@ -611,11 +651,39 @@ export default function ItineraryPage() {
   async function handleToggleStatus(item: ItineraryItem) {
     const newStatus = item.status === 'active' ? 'cancelled' : 'active';
     await setDoc(doc(db, 'itinerary_items', item.id), { status: newStatus }, { merge: true });
+    if (newStatus === 'cancelled') {
+      appendEvent(
+        tripId,
+        'BOOKING_CANCELLED',
+        members[0]?.id || 'organizer',
+        {
+          itemId: item.id,
+          label: item.label,
+          reason: 'Cancelled from itinerary',
+          refundAmount: null,
+          penaltyAmount: null,
+          cancelledBy: members[0]?.id || 'organizer',
+        }
+      ).catch(e => console.warn('Ledger event error:', e));
+    }
     loadData();
   }
 
   async function handleDeleteItem(id: string) {
     if (!confirm('Are you sure you want to remove this activity?')) return;
+    appendEvent(
+      tripId,
+      'BOOKING_CANCELLED',
+      members[0]?.id || 'organizer',
+      {
+        itemId: id,
+        label: 'Deleted Activity',
+        reason: 'Deleted from itinerary',
+        refundAmount: null,
+        penaltyAmount: null,
+        cancelledBy: members[0]?.id || 'organizer',
+      }
+    ).catch(e => console.warn('Ledger event error:', e));
     await deleteDoc(doc(db, 'itinerary_items', id));
     loadData();
   }

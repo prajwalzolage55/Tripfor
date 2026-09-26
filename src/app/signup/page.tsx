@@ -6,16 +6,40 @@ import { auth, db } from '@/lib/firebase';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { useAuth } from '@/components/AuthProvider';
-import { Plane, Mail, Lock, User, Phone, ArrowRight, Loader2, Eye, EyeOff } from 'lucide-react';
+import { Plane, Mail, Lock, User, Phone, ArrowRight, Loader2, Eye, EyeOff, Sparkles } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ReactLenis } from 'lenis/react';
+import Link from 'next/link';
+
+const COLORS = {
+  burgundy: '#791523',
+  cream: '#eadecd',
+  offWhite: '#fdfbfa',
+  rose: '#d05461'
+};
+
+const staggerContainer = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.1 }
+  }
+};
+
+const itemAnim = {
+  hidden: { opacity: 0, y: 20 },
+  show: { opacity: 1, y: 0, transition: { type: "spring" as const, stiffness: 120, damping: 14 } }
+};
 
 export default function SignupPage() {
   const router = useRouter();
   const { setUser } = useAuth();
+  
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [phone, setPhone] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -43,11 +67,9 @@ export default function SignupPage() {
     setLoading(true);
 
     try {
-      // Create user with Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
       const user = userCredential.user;
 
-      // Insert new user into Firestore
       const userProfile = {
         id: user.uid,
         display_name: displayName.trim(),
@@ -62,7 +84,6 @@ export default function SignupPage() {
         console.warn('Could not save user profile doc to Firestore:', docErr);
       }
 
-      // Auto-login after signup
       setUser({
         id: user.uid,
         display_name: userProfile.display_name,
@@ -80,321 +101,225 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="auth-page">
-      <style>{`
-        .auth-page {
-          min-height: 100vh;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 1.5rem;
-          position: relative;
-          overflow: hidden;
-          background: var(--color-surface-0);
-        }
-        .auth-page::before {
-          content: '';
-          position: absolute;
-          top: -40%;
-          left: -30%;
-          width: 160%;
-          height: 160%;
-          background: radial-gradient(circle at 25% 35%, rgba(92, 124, 250, 0.07) 0%, transparent 55%),
-                      radial-gradient(circle at 75% 65%, rgba(245, 159, 0, 0.04) 0%, transparent 55%);
-          animation: authBgRotate 40s linear infinite;
-          z-index: 0;
-        }
-        @keyframes authBgRotate {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-        .auth-card {
-          position: relative;
-          z-index: 1;
-          width: 100%;
-          max-width: 480px;
-          padding: 2.5rem;
-        }
-        .auth-logo {
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
-          margin-bottom: 0.75rem;
-          justify-content: center;
-        }
-        .auth-logo .icon-wrap {
-          width: 48px;
-          height: 48px;
-          border-radius: 14px;
-          background: linear-gradient(135deg, var(--color-brand-600), var(--color-brand-800));
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          box-shadow: 0 4px 20px rgba(66, 99, 235, 0.3);
-        }
-        .auth-logo h1 {
-          font-size: 1.5rem;
-          font-weight: 800;
-          letter-spacing: -0.02em;
-        }
-        .auth-subtitle {
-          text-align: center;
-          color: var(--color-text-muted);
-          font-size: 0.9rem;
-          margin-bottom: 2rem;
-          line-height: 1.5;
-        }
-        .auth-form {
-          display: flex;
-          flex-direction: column;
-          gap: 1rem;
-        }
-        .auth-form-group {
-          display: flex;
-          flex-direction: column;
-          gap: 0.375rem;
-        }
-        .auth-form-group label {
-          font-size: 0.8rem;
-          font-weight: 600;
-          color: var(--color-text-secondary);
-          text-transform: uppercase;
-          letter-spacing: 0.06em;
-        }
-        .auth-form-group .helper-text {
-          font-size: 0.725rem;
-          color: var(--color-text-muted);
-          margin-top: 0.125rem;
-        }
-        .auth-input-wrap {
-          position: relative;
-        }
-        .auth-input-wrap .auth-icon {
-          position: absolute;
-          left: 0.875rem;
-          top: 50%;
-          transform: translateY(-50%);
-          color: var(--color-text-muted);
-          pointer-events: none;
-        }
-        .auth-input-wrap input {
-          width: 100%;
-          padding: 0.75rem 0.875rem 0.75rem 2.75rem;
-          border: 1.5px solid var(--color-surface-200);
-          border-radius: 0.75rem;
-          font-size: 0.9rem;
-          background: var(--color-surface-0);
-          color: var(--color-text-primary);
-          transition: border-color 0.2s, box-shadow 0.2s;
-          outline: none;
-          font-family: var(--font-sans);
-        }
-        .auth-input-wrap input:focus {
-          border-color: var(--color-brand-500);
-          box-shadow: 0 0 0 3px rgba(92, 124, 250, 0.1);
-        }
-        .auth-input-wrap input::placeholder {
-          color: var(--color-surface-400);
-        }
-        .password-toggle {
-          position: absolute;
-          right: 0.75rem;
-          top: 50%;
-          transform: translateY(-50%);
-          background: none;
-          border: none;
-          color: var(--color-text-muted);
-          cursor: pointer;
-          padding: 0.25rem;
-          display: flex;
-          align-items: center;
-        }
-        .password-toggle:hover {
-          color: var(--color-text-secondary);
-        }
-        .auth-row {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 0.75rem;
-        }
-        @media (max-width: 480px) {
-          .auth-row { grid-template-columns: 1fr; }
-        }
-        .auth-error {
-          padding: 0.75rem 1rem;
-          border-radius: 0.625rem;
-          background: rgba(239, 68, 68, 0.08);
-          border: 1px solid rgba(239, 68, 68, 0.15);
-          color: #ef4444;
-          font-size: 0.8125rem;
-          font-weight: 500;
-        }
-        .auth-btn-primary {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          gap: 0.5rem;
-          padding: 0.75rem 1.25rem;
-          font-size: 0.9rem;
-          font-weight: 600;
-          color: white;
-          background: linear-gradient(135deg, var(--color-brand-600), var(--color-brand-700));
-          border: none;
-          border-radius: 0.75rem;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          box-shadow: 0 2px 12px rgba(66, 99, 235, 0.3);
-          width: 100%;
-          margin-top: 0.25rem;
-          font-family: var(--font-sans);
-        }
-        .auth-btn-primary:hover {
-          transform: translateY(-1px);
-          box-shadow: 0 4px 20px rgba(66, 99, 235, 0.4);
-        }
-        .auth-btn-primary:active { transform: translateY(0); }
-        .auth-btn-primary:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-          transform: none;
-        }
-        .auth-footer {
-          text-align: center;
-          font-size: 0.85rem;
-          color: var(--color-text-muted);
-          margin-top: 1.5rem;
-        }
-        .auth-footer a {
-          color: var(--color-brand-600);
-          font-weight: 600;
-          text-decoration: none;
-          transition: color 0.15s;
-        }
-        .auth-footer a:hover {
-          color: var(--color-brand-700);
-          text-decoration: underline;
-        }
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .spin { animation: spin 0.8s linear infinite; }
-      `}</style>
-
-      <div className="auth-card glass-card animate-in">
-        <div className="auth-logo">
-          <div className="icon-wrap">
-            <Plane size={24} color="white" />
-          </div>
-          <h1 className="gradient-text">GroupTrip Ledger</h1>
+    <ReactLenis root>
+      <main className="min-h-screen flex font-['Inter']" style={{ backgroundColor: COLORS.offWhite, color: COLORS.burgundy }}>
+        
+        {/* Left Side: Split Image */}
+        <div className="hidden lg:flex flex-1 relative overflow-hidden items-center justify-center">
+          <motion.img 
+            initial={{ scale: 1.1 }}
+            animate={{ scale: 1 }}
+            transition={{ duration: 2, ease: "easeOut" }}
+            src="https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?q=80&w=1400&auto=format&fit=crop" 
+            alt="Road Trip with Friends"
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+          {/* Rose/Burgundy Overlay */}
+          <div className="absolute inset-0 opacity-50 mix-blend-multiply" style={{ backgroundColor: COLORS.burgundy }} />
+          
+          <motion.div 
+            initial={{ opacity: 0, x: -50 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 1, delay: 0.3 }}
+            className="relative z-10 p-16 max-w-xl text-white"
+          >
+            <div className="inline-flex items-center gap-2 mb-6">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center bg-white/20 backdrop-blur-md">
+                <Plane className="w-5 h-5 text-white" />
+              </div>
+              <span className="text-2xl font-black tracking-tight">Tripfor</span>
+            </div>
+            <h1 className="text-5xl font-black tracking-tighter leading-[1.1] mb-6">
+              Create an account & start packing.
+            </h1>
+            <p className="text-lg font-medium opacity-90 leading-relaxed">
+              Join thousands of travelers using Tripfor to organize their itineraries and automatically split expenses without the headache.
+            </p>
+          </motion.div>
         </div>
 
-        <p className="auth-subtitle">
-          Create your account and start planning trips with friends.
-        </p>
+        {/* Right Side: Animated Signup Form */}
+        <div className="flex-1 flex flex-col justify-center px-8 sm:px-12 lg:px-20 py-12" style={{ backgroundColor: COLORS.cream }}>
+          
+          <Link href="/" className="absolute top-8 right-8 text-sm font-bold opacity-60 hover:opacity-100 transition-opacity flex items-center gap-2" style={{ color: COLORS.burgundy }}>
+            Back to Home
+          </Link>
 
-        {error && <div className="auth-error">{error}</div>}
+          <motion.div 
+            className="w-full max-w-lg mx-auto"
+            variants={staggerContainer}
+            initial="hidden"
+            animate="show"
+          >
+            <motion.div variants={itemAnim} className="mb-8 text-center lg:text-left">
+              <h2 className="text-4xl font-black tracking-tight mb-3">Join Tripfor</h2>
+              <p className="text-base font-medium opacity-70">
+                Setup your account in seconds.
+              </p>
+            </motion.div>
 
-        <form onSubmit={handleSignup} className="auth-form">
-          <div className="auth-form-group">
-            <label>Full Name</label>
-            <div className="auth-input-wrap">
-              <User size={16} className="auth-icon" />
-              <input
-                type="text"
-                placeholder="John Doe"
-                value={displayName}
-                onChange={e => setDisplayName(e.target.value)}
-                required
-                autoComplete="name"
-              />
-            </div>
-          </div>
-
-          <div className="auth-form-group">
-            <label>Email Address</label>
-            <div className="auth-input-wrap">
-              <Mail size={16} className="auth-icon" />
-              <input
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                required
-                autoComplete="email"
-              />
-            </div>
-          </div>
-
-          <div className="auth-form-group">
-            <label>Mobile Number (UPI)</label>
-            <div className="auth-input-wrap">
-              <Phone size={16} className="auth-icon" />
-              <input
-                type="tel"
-                placeholder="9876543210"
-                value={phone}
-                onChange={e => setPhone(e.target.value)}
-                required
-                autoComplete="tel"
-              />
-            </div>
-            <span className="helper-text">
-              This number will be used as your UPI ID for trip payments
-            </span>
-          </div>
-
-          <div className="auth-row">
-            <div className="auth-form-group">
-              <label>Password</label>
-              <div className="auth-input-wrap">
-                <Lock size={16} className="auth-icon" />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  placeholder="Min 6 characters"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  required
-                  minLength={6}
-                  autoComplete="new-password"
-                  style={{ paddingRight: '2.5rem' }}
-                />
-                <button
-                  type="button"
-                  className="password-toggle"
-                  onClick={() => setShowPassword(!showPassword)}
-                  tabIndex={-1}
+            {/* Error Message Animation */}
+            <AnimatePresence>
+              {error && (
+                <motion.div 
+                  initial={{ opacity: 0, y: -10, height: 0 }}
+                  animate={{ opacity: 1, y: 0, height: 'auto' }}
+                  exit={{ opacity: 0, y: -10, height: 0 }}
+                  className="overflow-hidden mb-6"
                 >
-                  {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                  <div className="px-5 py-4 rounded-2xl flex items-center gap-3 text-sm font-bold shadow-md bg-red-100 text-red-700 border border-red-200">
+                    <Sparkles className="w-5 h-5 flex-shrink-0" />
+                    {error}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <form onSubmit={handleSignup} className="space-y-4">
+              
+              <motion.div variants={itemAnim} className="space-y-1">
+                <label className="text-xs font-bold uppercase tracking-wider opacity-80" style={{ color: COLORS.burgundy }}>
+                  Full Name
+                </label>
+                <div className="relative">
+                  <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 opacity-40" style={{ color: COLORS.burgundy }} />
+                  <input
+                    type="text"
+                    placeholder="John Doe"
+                    value={displayName}
+                    onChange={e => setDisplayName(e.target.value)}
+                    required
+                    className="w-full pl-12 pr-4 py-3.5 rounded-2xl outline-none transition-all font-medium text-base shadow-sm focus:shadow-md border-2 border-transparent placeholder-gray-400"
+                    style={{ backgroundColor: COLORS.offWhite, color: COLORS.burgundy }}
+                    onFocus={(e) => e.target.style.borderColor = `${COLORS.burgundy}40`}
+                    onBlur={(e) => e.target.style.borderColor = 'transparent'}
+                  />
+                </div>
+              </motion.div>
+
+              <motion.div variants={itemAnim} className="space-y-1">
+                <label className="text-xs font-bold uppercase tracking-wider opacity-80" style={{ color: COLORS.burgundy }}>
+                  Email Address
+                </label>
+                <div className="relative">
+                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 opacity-40" style={{ color: COLORS.burgundy }} />
+                  <input
+                    type="email"
+                    placeholder="you@example.com"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    required
+                    className="w-full pl-12 pr-4 py-3.5 rounded-2xl outline-none transition-all font-medium text-base shadow-sm focus:shadow-md border-2 border-transparent placeholder-gray-400"
+                    style={{ backgroundColor: COLORS.offWhite, color: COLORS.burgundy }}
+                    onFocus={(e) => e.target.style.borderColor = `${COLORS.burgundy}40`}
+                    onBlur={(e) => e.target.style.borderColor = 'transparent'}
+                  />
+                </div>
+              </motion.div>
+
+              <motion.div variants={itemAnim} className="space-y-1">
+                <label className="text-xs font-bold uppercase tracking-wider opacity-80 flex justify-between" style={{ color: COLORS.burgundy }}>
+                  <span>Mobile Number</span>
+                  <span className="opacity-60 normal-case tracking-normal">Used as UPI ID</span>
+                </label>
+                <div className="relative">
+                  <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 opacity-40" style={{ color: COLORS.burgundy }} />
+                  <input
+                    type="tel"
+                    placeholder="9876543210"
+                    value={phone}
+                    onChange={e => setPhone(e.target.value)}
+                    required
+                    className="w-full pl-12 pr-4 py-3.5 rounded-2xl outline-none transition-all font-medium text-base shadow-sm focus:shadow-md border-2 border-transparent placeholder-gray-400"
+                    style={{ backgroundColor: COLORS.offWhite, color: COLORS.burgundy }}
+                    onFocus={(e) => e.target.style.borderColor = `${COLORS.burgundy}40`}
+                    onBlur={(e) => e.target.style.borderColor = 'transparent'}
+                  />
+                </div>
+              </motion.div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <motion.div variants={itemAnim} className="space-y-1">
+                  <label className="text-xs font-bold uppercase tracking-wider opacity-80" style={{ color: COLORS.burgundy }}>
+                    Password
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 opacity-40" style={{ color: COLORS.burgundy }} />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="Min 6 chars"
+                      value={password}
+                      onChange={e => setPassword(e.target.value)}
+                      required
+                      minLength={6}
+                      className="w-full pl-10 pr-10 py-3.5 rounded-2xl outline-none transition-all font-medium text-sm shadow-sm focus:shadow-md border-2 border-transparent placeholder-gray-400"
+                      style={{ backgroundColor: COLORS.offWhite, color: COLORS.burgundy }}
+                      onFocus={(e) => e.target.style.borderColor = `${COLORS.burgundy}40`}
+                      onBlur={(e) => e.target.style.borderColor = 'transparent'}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 opacity-40 hover:opacity-100 transition-opacity focus:outline-none"
+                      style={{ color: COLORS.burgundy }}
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </motion.div>
+
+                <motion.div variants={itemAnim} className="space-y-1">
+                  <label className="text-xs font-bold uppercase tracking-wider opacity-80" style={{ color: COLORS.burgundy }}>
+                    Confirm
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 opacity-40" style={{ color: COLORS.burgundy }} />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="Re-enter"
+                      value={confirmPassword}
+                      onChange={e => setConfirmPassword(e.target.value)}
+                      required
+                      minLength={6}
+                      className="w-full pl-10 pr-4 py-3.5 rounded-2xl outline-none transition-all font-medium text-sm shadow-sm focus:shadow-md border-2 border-transparent placeholder-gray-400"
+                      style={{ backgroundColor: COLORS.offWhite, color: COLORS.burgundy }}
+                      onFocus={(e) => e.target.style.borderColor = `${COLORS.burgundy}40`}
+                      onBlur={(e) => e.target.style.borderColor = 'transparent'}
+                    />
+                  </div>
+                </motion.div>
+              </div>
+
+              <motion.div variants={itemAnim} className="pt-4">
+                <button 
+                  type="submit" 
+                  disabled={loading}
+                  className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-white font-bold text-lg transition-transform hover:-translate-y-1 shadow-xl hover:shadow-2xl disabled:opacity-70 disabled:hover:translate-y-0"
+                  style={{ backgroundColor: COLORS.rose }}
+                >
+                  {loading ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <>
+                      Create Account <ArrowRight className="w-5 h-5" />
+                    </>
+                  )}
                 </button>
-              </div>
-            </div>
+              </motion.div>
 
-            <div className="auth-form-group">
-              <label>Confirm Password</label>
-              <div className="auth-input-wrap">
-                <Lock size={16} className="auth-icon" />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  placeholder="Re-enter password"
-                  value={confirmPassword}
-                  onChange={e => setConfirmPassword(e.target.value)}
-                  required
-                  minLength={6}
-                  autoComplete="new-password"
-                />
-              </div>
-            </div>
-          </div>
+            </form>
 
-          <button type="submit" className="auth-btn-primary" disabled={loading}>
-            {loading ? <Loader2 size={16} className="spin" /> : <ArrowRight size={16} />}
-            Create Account
-          </button>
-        </form>
+            <motion.div variants={itemAnim} className="mt-8 text-center text-sm font-semibold opacity-70">
+              Already have an account?{' '}
+              <Link href="/login" className="hover:underline" style={{ color: COLORS.rose }}>
+                Sign in
+              </Link>
+            </motion.div>
 
-        <div className="auth-footer">
-          Already have an account?{' '}
-          <a href="/login">Sign in</a>
+          </motion.div>
         </div>
-      </div>
-    </div>
+        
+      </main>
+    </ReactLenis>
   );
 }

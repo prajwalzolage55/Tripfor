@@ -6,6 +6,8 @@ import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, doc, setDoc, deleteDoc, orderBy } from 'firebase/firestore';
 import { useAuth } from '@/components/AuthProvider';
 import { dispatchExpenseNotification } from '@/lib/notifications';
+import { appendEvent } from '@/lib/ledger';
+import type { ExpenseAddedPayload, ExpenseDeletedPayload } from '@/lib/ledger';
 import type { Expense, ItineraryItem, TripMember, ItemParticipant, SplitType } from '@/lib/types';
 import {
   Plus, Receipt, DollarSign, Upload, Image, X, Loader2, Check, User, Tag, ChevronDown, Trash2,
@@ -128,6 +130,12 @@ export default function ExpensesPage() {
     try {
       const expRef = doc(collection(db, 'expenses'));
       const parsedAmount = parseFloat(formAmount);
+
+      // Determine participants for this expense
+      const expParticipants = formItemId && participantsMap[formItemId]
+        ? participantsMap[formItemId].map(p => p.member_id)
+        : members.map(m => m.id);
+
       await setDoc(expRef, {
         id: expRef.id,
         trip_id: tripId,
@@ -139,6 +147,23 @@ export default function ExpensesPage() {
         note: formNote || null,
         created_at: new Date().toISOString()
       });
+
+      // Emit event to the ledger event stream
+      const storedUser = localStorage.getItem('gtl_user');
+      const actorId = storedUser ? JSON.parse(storedUser).id : 'unknown';
+      const eventPayload: ExpenseAddedPayload = {
+        expenseId: expRef.id,
+        itemId: formItemId || null,
+        amount: parsedAmount,
+        currency: 'INR',
+        paidByMemberId: formPaidBy,
+        splitType: formSplitType,
+        participantMemberIds: expParticipants,
+        note: formNote || null,
+        receiptUrl: formReceipt || null,
+      };
+      appendEvent(tripId, 'EXPENSE_ADDED', actorId, eventPayload)
+        .catch(err => console.warn('Ledger event append error:', err));
 
       // Dispatch push notification to trip members (e.g. ₹5,000 for dinner)
       const payer = members.find(m => m.id === formPaidBy);
@@ -170,7 +195,25 @@ export default function ExpensesPage() {
   async function deleteExpense(id: string) {
     if (!confirm('Delete this expense?')) return;
     try {
+      // Find the expense to capture original data for the event
+      const originalExpense = expenses.find(e => e.id === id);
+
       await deleteDoc(doc(db, 'expenses', id));
+
+      // Emit EXPENSE_DELETED event to ledger
+      if (originalExpense) {
+        const storedUser = localStorage.getItem('gtl_user');
+        const actorId = storedUser ? JSON.parse(storedUser).id : 'unknown';
+        const payload: ExpenseDeletedPayload = {
+          expenseId: id,
+          originalAmount: Number(originalExpense.amount),
+          originalPaidBy: originalExpense.paid_by,
+          reason: 'User deleted',
+        };
+        appendEvent(tripId, 'EXPENSE_DELETED', actorId, payload)
+          .catch(err => console.warn('Ledger event append error:', err));
+      }
+
       loadData();
     } catch (e) {
       console.error(e);

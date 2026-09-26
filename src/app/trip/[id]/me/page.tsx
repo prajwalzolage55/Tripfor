@@ -5,13 +5,15 @@ import { useParams } from 'next/navigation';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { computeSettlements, type RawExpense } from '@/lib/engine';
+import { getEventStream, replayEvents, generateBalanceTrace, type BalanceTrace, type LedgerEvent } from '@/lib/ledger';
 import type { Expense, ItineraryItem, TripMember, ItemParticipant, SplitType } from '@/lib/types';
 import type { Settlement } from '@/lib/engine';
 import {
   User, DollarSign, ArrowRight, ArrowDown, ArrowUp,
   Loader2, CheckCircle2, Clock, ExternalLink, Receipt,
   Plane, Hotel, Activity, Car, UtensilsCrossed, MoreHorizontal,
-  Map as LucideMap,
+  Map as LucideMap, HelpCircle, ShieldCheck, X, Sparkles, Lock,
+  Scale,
 } from 'lucide-react';
 
 function typeIcon(type: string) {
@@ -38,6 +40,11 @@ export default function MePage() {
   const [mySettlements, setMySettlements] = useState<Settlement[]>([]);
   const [totalPaid, setTotalPaid] = useState(0);
   const [totalShare, setTotalShare] = useState(0);
+
+  // Event stream balance trace state
+  const [events, setEvents] = useState<LedgerEvent[]>([]);
+  const [trace, setTrace] = useState<BalanceTrace[]>([]);
+  const [showTraceModal, setShowTraceModal] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -134,6 +141,19 @@ export default function MePage() {
         if (exp.shares[me.id]) share += exp.shares[me.id];
       });
       setTotalShare(Math.round(share * 100) / 100);
+
+      // Load event-sourced balance trace
+      try {
+        const stream = await getEventStream(tripId);
+        setEvents(stream);
+        if (stream.length > 0) {
+          const derived = replayEvents(tripId, stream);
+          const traces = generateBalanceTrace(tripId, stream, me.id, derived.constitution);
+          setTrace(traces);
+        }
+      } catch (streamErr) {
+        console.warn('Ledger stream load warning:', streamErr);
+      }
     } catch (err) {
       console.error('Failed to load me page data:', err);
     } finally {
@@ -307,6 +327,57 @@ export default function MePage() {
           padding: 2rem;
           color: var(--color-text-secondary);
         }
+        .why-owe-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.375rem;
+          margin-top: 0.5rem;
+          padding: 0.3125rem 0.625rem;
+          font-size: 0.6875rem;
+          font-weight: 700;
+          border-radius: var(--radius-badge);
+          background: rgba(92, 124, 250, 0.12);
+          border: 1px solid rgba(92, 124, 250, 0.3);
+          color: var(--color-brand-600);
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .why-owe-btn:hover {
+          background: rgba(92, 124, 250, 0.22);
+          transform: translateY(-1px);
+        }
+        .privacy-lens-box {
+          padding: 1rem 1.25rem;
+          border-radius: var(--radius-card);
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+          margin-bottom: 2rem;
+          font-size: 0.75rem;
+          color: #475569;
+        }
+        .trace-modal-backdrop {
+          position: fixed;
+          inset: 0;
+          background: rgba(15, 23, 42, 0.6);
+          backdrop-filter: blur(4px);
+          z-index: 100;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 1rem;
+        }
+        .trace-modal {
+          background: white;
+          border-radius: 1.25rem;
+          max-width: 680px;
+          width: 100%;
+          max-height: 85vh;
+          overflow-y: auto;
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+          border: 1px solid #e2e8f0;
+          display: flex;
+          flex-direction: column;
+        }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .spin { animation: spin 0.8s linear infinite; }
       `}</style>
@@ -331,11 +402,33 @@ export default function MePage() {
           <div className="value" style={{ color: balance > 0.01 ? 'var(--color-success-500)' : balance < -0.01 ? 'var(--color-danger-500)' : 'var(--color-text-muted)' }}>
             {balance > 0.01 ? '+' : ''}₹{Math.abs(balance).toLocaleString('en-IN')}
           </div>
+          <button
+            onClick={() => setShowTraceModal(true)}
+            className="why-owe-btn"
+          >
+            <HelpCircle size={12} /> Why do I owe this?
+          </button>
         </div>
         <div className="me-stat glass-card animate-in" style={{ animationDelay: '0.15s' }}>
           <div className="label">My Items</div>
           <div className="value">{myItems.length}</div>
         </div>
+      </div>
+
+      {/* Personal Impact Lens */}
+      <div className="privacy-lens-box animate-in">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.375rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontWeight: 700, color: '#1e293b' }}>
+            <Lock size={13} style={{ color: 'var(--color-brand-500)' }} />
+            Personal Impact Lens (Privacy-Scoped)
+          </div>
+          <span style={{ fontSize: '0.6875rem', padding: '0.125rem 0.5rem', borderRadius: '9999px', background: '#e0e7ff', color: '#4338ca', fontWeight: 600 }}>
+            Consent-Protected
+          </span>
+        </div>
+        <p style={{ margin: 0, lineHeight: 1.5 }}>
+          Your view only displays your personal consumption and payments. Group totals are shown in aggregate, and individual bank feeds remain protected under RBI Account Aggregator protocol.
+        </p>
       </div>
 
       {/* My Settlements */}
@@ -396,6 +489,127 @@ export default function MePage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* ─── Balance Trace Modal ─── */}
+      {showTraceModal && (
+        <div className="trace-modal-backdrop" onClick={() => setShowTraceModal(false)}>
+          <div className="trace-modal animate-in" onClick={e => e.stopPropagation()}>
+            <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', color: '#6366f1', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <ShieldCheck size={14} /> Immutable Event Trace
+                </div>
+                <h3 style={{ fontSize: '1.125rem', fontWeight: 800, margin: '0.25rem 0 0', color: '#0f172a' }}>
+                  Why do I owe {balance > 0.01 ? '+' : ''}₹{Math.abs(balance).toLocaleString('en-IN')}?
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowTraceModal(false)}
+                style={{ width: '32px', height: '32px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#f8fafc', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Trace Summary Breakdown */}
+            <div style={{ padding: '1rem 1.5rem', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem' }}>
+              <div style={{ padding: '0.75rem', background: 'white', borderRadius: '0.75rem', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: '0.6875rem', color: '#64748b', fontWeight: 600 }}>Total Paid Out</div>
+                <div style={{ fontSize: '1rem', fontWeight: 800, color: '#16a34a' }}>+₹{totalPaid.toLocaleString('en-IN')}</div>
+              </div>
+              <div style={{ padding: '0.75rem', background: 'white', borderRadius: '0.75rem', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: '0.6875rem', color: '#64748b', fontWeight: 600 }}>Consumed Share</div>
+                <div style={{ fontSize: '1rem', fontWeight: 800, color: '#dc2626' }}>-₹{totalShare.toLocaleString('en-IN')}</div>
+              </div>
+              <div style={{ padding: '0.75rem', background: 'white', borderRadius: '0.75rem', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: '0.6875rem', color: '#64748b', fontWeight: 600 }}>Net Derived Balance</div>
+                <div style={{ fontSize: '1rem', fontWeight: 800, color: balance >= 0 ? '#16a34a' : '#dc2626' }}>
+                  {balance >= 0 ? '+' : ''}₹{balance.toLocaleString('en-IN')}
+                </div>
+              </div>
+            </div>
+
+            {/* Chronological Event Stream Decomposition */}
+            <div style={{ padding: '1.25rem 1.5rem' }}>
+              <h4 style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.75rem' }}>
+                Chronological Event-by-Event Replay
+              </h4>
+
+              {trace.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+                  {trace.map((item, idx) => (
+                    <div
+                      key={idx}
+                      style={{ padding: '0.875rem', borderRadius: '0.75rem', border: '1px solid #e2e8f0', background: '#fafafa', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                            <span style={{ fontSize: '0.6875rem', padding: '0.125rem 0.375rem', borderRadius: '4px', background: '#e2e8f0', color: '#475569', fontFamily: 'monospace', fontWeight: 600 }}>
+                              {item.eventType}
+                            </span>
+                            <span style={{ fontSize: '0.6875rem', color: '#94a3b8' }}>
+                              {item.timestamp ? new Date(item.timestamp).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#1e293b' }}>
+                            {item.description}
+                          </div>
+                        </div>
+
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: '0.875rem', fontWeight: 800, fontFamily: 'monospace', color: item.impact > 0 ? '#16a34a' : item.impact < 0 ? '#dc2626' : '#64748b' }}>
+                            {item.impact > 0 ? `+₹${item.impact.toLocaleString('en-IN')}` : item.impact < 0 ? `-₹${Math.abs(item.impact).toLocaleString('en-IN')}` : '₹0'}
+                          </div>
+                          <div style={{ fontSize: '0.6875rem', color: '#64748b' }}>
+                            Run: ₹{item.runningBalance.toLocaleString('en-IN')}
+                          </div>
+                        </div>
+                      </div>
+
+                      {item.applicableRule && (
+                        <div style={{ padding: '0.5rem 0.75rem', borderRadius: '0.5rem', background: '#eef2ff', border: '1px solid #e0e7ff', fontSize: '0.75rem', color: '#3730a3' }}>
+                          <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.25rem', marginBottom: '0.125rem' }}>
+                            <Scale size={12} />
+                            Rule {item.applicableRule.ruleNumber}: {item.applicableRule.ruleName}
+                          </div>
+                          <div style={{ fontStyle: 'italic', color: '#4338ca' }}>
+                            {item.applicableRule.citation}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ padding: '1rem', background: '#f1f5f9', borderRadius: '0.75rem', fontSize: '0.8125rem', color: '#475569', lineHeight: 1.6 }}>
+                  <p style={{ margin: '0 0 0.5rem' }}>
+                    <strong>Derived from Active Ledger Calculations:</strong>
+                  </p>
+                  <ul style={{ margin: 0, paddingLeft: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    <li>Total amount you personally paid upfront: <strong>₹{totalPaid.toLocaleString('en-IN')}</strong></li>
+                    <li>Your allocated share across all active items: <strong>₹{totalShare.toLocaleString('en-IN')}</strong></li>
+                    <li>
+                      Result: You {balance < 0 ? 'owe' : 'are owed'} <strong>₹{Math.abs(balance).toLocaleString('en-IN')}</strong>.
+                    </li>
+                  </ul>
+                  <p style={{ margin: '0.5rem 0 0', fontSize: '0.75rem', color: '#64748b', fontStyle: 'italic' }}>
+                    Every balance change adheres to the Fairness Constitution rules. No arbitrary overrides.
+                  </p>
+                </div>
+              )}
+
+              {/* Constitution Rule Citation Footer */}
+              <div style={{ marginTop: '1.25rem', padding: '0.75rem 1rem', borderRadius: '0.75rem', background: '#eef2ff', border: '1px solid #c7d2fe', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', color: '#3730a3' }}>
+                <ShieldCheck size={16} />
+                <span>
+                  Governed by <strong>Rule #1 (Late Joiner Protection)</strong> & <strong>Rule #7 (Refund to Original Funder)</strong>.
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -1,0 +1,690 @@
+GroupTrip Ledger — Solution Design
+====================================
+
+Core Philosophy: Not another expense splitter. A financial digital twin of the trip that
+safely simulates changes before anyone commits to them.
+
+
+================================================================================
+1. FOUNDATIONAL ARCHITECTURE: EVENT-SOURCED TRIP LEDGER
+================================================================================
+
+The entire trip is modeled as an append-only stream of immutable events — never a
+mutable balance sheet.
+
+  Booking Created -> Deposit Paid -> Participant Added -> Price Changed ->
+  Participant Withdrew -> Refund Requested -> Vendor Credit Received ->
+  Credit Reassigned -> Settlement Completed
+
+Every monetary state is derived by replaying events, not stored as a static number.
+
+WHY EVENT-SOURCING IS THE CORE UNLOCK
+--------------------------------------
+Problem                                   How Event-Sourcing Solves It
+-----------------------------------------  ------------------------------------------------------
+"Why do I owe Rs 3,200?"                  Literally replay the exact event sequence that produced the number
+"What if Priya hadn't joined the safari?" Replay the ledger with that event removed — instant counterfactual
+Late-joiner proration                     Replay from the moment they joined forward — no special-case code
+Cancellations / refunds                   New events appended, not edits — original agreement is never lost
+Mid-trip disputes                         Full audit trail, every rule application cited explicitly
+
+
+================================================================================
+2. FLAGSHIP FEATURE: WHAT-IF TIME MACHINE (TRIP FORK)
+================================================================================
+
+Every proposed change creates a temporary alternate timeline. The system answers
+before anyone commits:
+
+  "If we make this change — exactly who pays more, who gets money back, which
+  bookings become invalid, and what is the cheapest fair way to reorganize?"
+
+HOW IT WORKS
+-------------
+An organizer enters any change, for example:
+  - "Aisha leaves after Day 2."
+  - "Rahul skips rafting."
+  - "Two people want private rooms."
+  - "The hotel cancels one room."
+  - "The airline offers vouchers instead of cash."
+  - "One participant cannot pay more than Rs 8,000 this week."
+
+The system generates multiple valid settlement scenarios in parallel:
+
+  Scenario                    Group Impact   Who Is Affected          Recommendation
+  --------------------------  -------------  -----------------------  ---------------------
+  Keep current bookings       +Rs 6,400      Remaining room members   Simple but expensive
+  Reassign rooms              +Rs 1,200      Four travelers           Lowest total cost
+  Replace departing traveler  -Rs 800        New participant          Best overall value
+  Cancel and rebook           +Rs 2,300      Entire group             Most flexible
+
+Nothing changes until the group approves a scenario. The approved timeline becomes
+the new official ledger, with every adjustment preserved and every prior state
+still accessible.
+
+
+================================================================================
+3. FAIRNESS CONSTITUTION
+================================================================================
+
+Before the trip, the group selects or creates explicit rules governing edge cases.
+Every recalculation cites the applicable rule — eliminating the most common
+group-travel conflict: disagreement over what "fair" means.
+
+EXAMPLE RULES
+--------------
+  - A late joiner does not share costs incurred before joining.
+  - A voluntary cancellation pays any non-refundable loss caused by leaving.
+  - A group-forced cancellation is shared equally by all affected participants.
+  - Children count as 0.5 shares for accommodation.
+  - Couples may share one room share but retain individual activity shares.
+  - The organizer fronts deposits but does not automatically bear cancellation risk.
+  - Vendor refunds return to the people who economically funded the booking,
+    not merely to the cardholder.
+
+EXAMPLE TRACE
+--------------
+  "Meera's balance increased by Rs 750 because Room 3 changed from four occupants
+  to three. Under Rule 4, voluntary withdrawal costs remain assigned to the
+  withdrawing participant until a replacement joins."
+
+
+================================================================================
+4. FINANCIAL EVENT GRAPH
+================================================================================
+
+Behind the interface, the trip is a dependency graph across six node types:
+
+  People        — Travelers, organizers, guests
+  Commitments   — Bookings, deposits, cancellation obligations
+  Consumption   — Who actually used each service
+  Payments      — Who paid and from which source
+  Benefits      — Refunds, vouchers, rewards, insurance claims
+  Dependencies  — Room capacity, minimum group size, bundled 
+  
+
+This structure models cascading effects — when one booking changes, the graph
+lights up to show every downstream impact on cost, assignment, and fairness.
+
+
+================================================================================
+5. AI AGENT LAYER
+================================================================================
+
+A multi-agent crew operating over the event stream — not a single chatbot:
+
+  Agent              Responsibility
+  -----------------  ---------------------------------------------------------------
+  Ledger Agent       Watches event stream, recomputes balances, flags inconsistencies
+                     (double payment, orphaned booking, unclaimed refund)
+  Negotiator Agent   On split disputes, proposes 2-3 fair resolutions using
+                     counterfactual replay and fairness rules
+  Booking Agent      Parses vendor confirmations / WhatsApp-style text and
+                     auto-creates structured events
+  Optimizer Agent    Runs room/cab allocation solver; re-optimizes when someone
+                     drops out mid-trip
+
+AI MEDIATOR (DISPUTE RESOLUTION)
+----------------------------------
+When there is no obviously fair answer, the system acts as a neutral mediator —
+generating three alternatives:
+
+  1. Strict responsibility   — the person causing the change bears its cost.
+  2. Equal group solidarity  — all affected travelers share the cost.
+  3. Minimum hardship        — costs distributed subject to voluntary spending limits.
+
+Each result includes a fairness explanation and a disagreement score showing who
+is disadvantaged relative to the original plan. Participants vote privately,
+preventing social pressure from dominating.
+
+
+================================================================================
+6. SHAPLEY-VALUE COST ALLOCATION
+================================================================================
+
+Instead of hand-coded split rules, use Shapley values from cooperative game theory —
+the mathematically unique, axiomatically fair allocation of shared costs when
+contributions overlap in complex ways.
+
+Why this matters: When a rented car is used by different subsets of people on
+different days, no manual split rule handles this cleanly. The Shapley formula
+computes each person's marginal contribution to the total cost across all possible
+subgroups — and allocates accordingly. Every edge case the problem statement raises
+(people joining/leaving activities mid-trip) is handled structurally, not with
+new if/else branches.
+
+
+================================================================================
+7. SETTLEMENT ROUTER (MINIMUM-TRANSACTION GRAPH)
+================================================================================
+
+Once balances are final, the system does not simply say "Sam owes Rs 4,000."
+
+It models debts as a weighted directed graph and runs a debt-netting /
+graph-simplification algorithm to minimize the number of actual transfers.
+
+EXAMPLE
+--------
+  A owes B:     Rs 2,000
+  B owes C:     Rs 1,500
+  C owes A:     Rs 1,000
+  Hotel owes B: Rs 700 refund (pending)
+
+  Router output: "Wait for the hotel refund, then complete 2 transfers instead of 5."
+
+PAYMENT STATE CLASSIFICATION
+------------------------------
+  State                  Meaning
+  ---------------------  ----------------------------------------
+  Pay Now                Debt is clear and settled
+  Pay After Refund       Wait for pending vendor refund
+  Vendor Owes            External party has outstanding obligation
+  Provisionally Disputed Under active review
+  Covered by Organizer   Fronted; will be redistributed
+  Non-Cash Voucher       Credit that cannot be transferred
+
+
+================================================================================
+8. AUTO-RECONCILIATION VIA ACCOUNT AGGREGATOR (AA)
+================================================================================
+
+Strongest unique differentiator. No competing team at an Indian hackathon is
+likely to reach for the RBI-regulated AA framework.
+
+Instead of participants manually logging expenses, the app uses consent-based
+Account Aggregator data pulls to automatically detect trip-related UPI/bank
+transactions and match them to ledger events (by amount, timestamp, and vendor
+name fuzzy-matching).
+
+Demo moment: "Raj paid the resort — the app auto-detected it from his bank feed
+and asked one tap to confirm which activity it belongs to."
+
+This solves duplicate payments and manual entry errors at the data-collection
+layer, not just at the math layer. Data sharing is consent-scoped, revocable,
+and RBI-compliant — not a scraped bank login.
+
+
+================================================================================
+9. GHOST EXPENSE & UNCLAIMED REFUND DETECTION
+================================================================================
+
+Refunds silently disappear in real group trips — a vendor refunds Rs 5,000 to
+whoever's card was on file, and it never gets redistributed.
+
+A background agent enforces refund accountability:
+  - Every cancellation event must have a corresponding refund event within N days.
+  - Every refund must be redistributed to whoever originally funded that expense.
+  - Anything unresolved is flagged with escalating reminders.
+
+This solves a universally relatable, real-money problem that no other competing
+team will think to demo.
+
+
+================================================================================
+10. PERSONAL IMPACT LENS
+================================================================================
+
+Every participant gets a private view showing only their portion of the trip:
+  - Their itinerary and which activities they joined
+  - What they consumed vs. what they paid
+  - Current balance and breakdown
+  - Potential exposure from pending cancellations
+  - Expected refunds and their confidence level
+
+"WHY DO I OWE THIS?" BUTTON
+-----------------------------
+Presents a full event trace, for example:
+
+  Hotel: Rs 4,200
+    |- 2 nights in shared room:      Rs 3,600
+    |- Extra-bed allocation:          Rs 900
+    +- Cancellation refund credit:   -Rs 300
+
+PRIVACY-SCOPED VISIBILITY
+---------------------------
+Participants see their own data in full, group totals in aggregate, and other
+members' individual transactions only if those members opt to share. Product
+maturity detail almost no competing team will model.
+
+
+================================================================================
+11. SUPPORTING FEATURES
+================================================================================
+
+ESCROW / POOLED-WALLET MODE
+-----------------------------
+Participants pre-fund a shared virtual wallet. The organizer "spends" from it
+as bookings happen. Live dashboard shows the pool balance draining in real time —
+no post-hoc chasing.
+
+CONVERSATIONAL EXPENSE LOGGING
+--------------------------------
+"Add Rs 2000 dinner split between me, Raj, and Priya" — parsed via lightweight
+NLP into a structured event. Meets people where they already log expenses: in chat.
+
+MULTI-CURRENCY FX LOCKING
+---------------------------
+For international trips, the FX rate is snapshot-locked at each event's timestamp
+(a free win from event-sourcing). Nobody argues about exchange-rate drift between
+booking and settlement.
+
+CROSS-TRIP SETTLEMENT SCORE
+-----------------------------
+A portable, lightweight reputation indicator — "settles within 3 days on average"
+— visible to organizers when deciding who fronts costs on the next trip. Solves a
+behavioral problem no other feature touches.
+
+ANOMALY / FRAUD FLAGGING
+--------------------------
+Flag expenses that deviate significantly from typical costs for a category, vendor,
+or location. Catches typos, double-entries, and vendor overcharging. Graph-based
+anomaly detection is a genuine AI use case structurally identical to fraud-graph
+problems.
+
+
+================================================================================
+12. THE SIGNATURE DEMO
+================================================================================
+
+Setup: A six-person trip with three shared rooms, one participant leaving midway,
+one joining late, a cancelled activity with partial refund, a vendor issuing credit
+instead of cash, and one organizer fronting all deposits.
+
+Demo interaction: A judge drags a participant out of Day 3 on a visual timeline.
+In real time:
+
+  1. The affected booking graph lights up showing cascading dependencies.
+  2. Three alternate arrangements are generated with full cost breakdowns.
+  3. Cost impact on each remaining traveler is shown side by side.
+  4. The Fairness Constitution rule being applied is cited explicitly.
+  5. The optimized final transfer graph collapses to minimum transactions.
+  6. A plain-language explanation is sent to all affected participants.
+
+This single interaction communicates the entire product more powerfully than
+any dashboard screenshot.
+
+
+================================================================================
+ARCHITECTURE SUMMARY
+================================================================================
+
+  Event Stream (append-only)
+          |
+          +-- Financial Event Graph   Booking/room/activity dependencies
+          |
+          +-- AI Agent Layer          Ledger, Negotiator, Booking, Optimizer
+          |
+          +-- What-If Engine          Counterfactual replay, scenario comparison
+          |
+          +-- Shapley Allocator       Provably fair cost distribution
+          |
+          +-- Settlement Router       Minimum-transfer graph optimization
+          |
+          +-- AA Reconciler           Consent-based auto-detection of payments
+          |
+          +-- Personal Lens           Private, scoped view per participant
+
+
+
+AA Recounciler - 
+
+
+Account Aggregator (AA) — GroupTrip Ledger Reference
+======================================================
+
+
+================================================================================
+QUESTION 1: HOW LONG BEFORE AA RELEASES TRANSACTION DATA?
+================================================================================
+
+The AA framework has NO mandated delay on its own end. It is a real-time data
+pipe. The actual latency depends on where you are in the chain:
+
+  Stage                                      Timing
+  -----------------------------------------  --------------------------------
+  User gives consent                         Instant
+  AA fetches from FIP (major banks)          Under 15 seconds
+  Smaller / less integrated banks            Slower, occasional failures
+  UPI transaction appears in bank ledger     Real-time to a few minutes
+                                             after payment settles
+  AA can serve it after that                 Immediately once bank records it
+
+ONE IMPORTANT CAVEAT
+---------------------
+RBI has proposed a 1-hour cooling-off period for P2P UPI transfers above
+Rs 10,000 (fraud prevention measure). This is a payment execution delay,
+NOT an AA data delay. It simply means the transaction will not appear in
+the bank ledger for up to an hour. Once it settles, AA fetches it instantly.
+
+FOR YOUR GROUPTRIP USE CASE
+-----------------------------
+Realistic data freshness: a few minutes after a payment is made.
+Not T+1. Not batch processing. Near real-time.
+
+
+================================================================================
+QUESTION 2: HOW DO YOU IDENTIFY TRANSACTIONS OF ONLY ONE PERSON?
+================================================================================
+
+This is where the AA architecture works perfectly for GroupTrip. Here is why:
+
+THE CORE MECHANISM — CONSENT ARTEFACT PER PERSON
+--------------------------------------------------
+Every AA data pull is tied to one account holder's explicit consent. The data
+you receive is already scoped to that one person's account. There is no global
+transaction feed you need to filter — each consent gives you one person's data
+and only that person's data.
+
+HOW IT WORKS IN YOUR APP
+--------------------------
+  Step 1 — Each trip participant independently logs into the GroupTrip app
+            and goes through the AA consent flow (via Setu / Finvu / etc.)
+
+  Step 2 — They select which of their accounts to link
+            (e.g., their SBI savings account or Paytm wallet)
+
+  Step 3 — Your app receives only that person's transactions from those
+            accounts. Nobody else's data comes through.
+
+HOW TO THEN ISOLATE TRIP-RELATED TRANSACTIONS
+-----------------------------------------------
+Since you get their full bank statement, you need to filter down to only
+the expenses that belong to the trip. Two approaches:
+
+  APPROACH A — Fuzzy Match on amount + vendor + timestamp
+
+    Trip event:   "Raj paid Zostel Manali Rs 2,400 on Aug 12"
+    Bank feed:    "Aug 12 | ZOSTEL HOSPITALITY | Rs 2,400 | UPI"
+    Match score:  High — amount exact, vendor substring match, same date
+
+    Action: Prompt Raj with a one-tap confirmation:
+    "Did this payment belong to the trip? [Yes / No / Assign to activity]"
+
+  APPROACH B — UPI Reference ID Matching (stronger, no ambiguity)
+
+    If the organizer books via a UPI collect request or UPI mandate, the
+    UPI transaction reference ID appears in both the bank statement and
+    your ledger. This is an exact match — no fuzzy logic needed at all.
+
+    Best for: organizer-initiated payments, hotel deposits, activity bookings.
+
+PRIVACY BOUNDARY — IMPORTANT FOR YOUR PITCH
+---------------------------------------------
+  - Person A's consent NEVER exposes Person B's transactions.
+    The AA framework enforces this at the protocol level.
+
+  - Your app holds each person's data under their individual consent scope,
+    which they can revoke at any time.
+
+  - This is not a "read everyone's bank" system. Each person opts in
+    individually, sees only their own data shared, and can withdraw at will.
+
+  - This distinction — consent-scoped, revocable, RBI-regulated — is what
+    separates this from screen scraping or asking people to share passwords.
+
+
+================================================================================
+SUMMARY
+================================================================================
+
+  Topic                      Answer
+  -------------------------  --------------------------------------------------
+  AA data latency            Near real-time (minutes), not T+1 or batch
+  RBI P2P cooling period     Up to 1 hour for payments over Rs 10,000,
+                             but only delays settlement, not AA fetch
+  Single-person isolation    Automatic — consent is per-person by design,
+                             data is already scoped before it reaches you
+  Trip transaction matching  Fuzzy match (amount + vendor + date) for
+                             general payments; UPI ref ID for exact match
+  Privacy guarantee          Protocol-level — AA cannot read data, Person A
+                             never sees Person B's transactions
+                        
+
+DEV GUIDE - 
+
+
+GroupTrip Ledger — Build Challenges & What to Hardcode
+=========================================================
+
+
+================================================================================
+MOST CHALLENGING PARTS TO BUILD (RANKED)
+================================================================================
+
+RED — HARDEST (Core Engine Work)
+----------------------------------
+
+1. WHAT-IF / TRIP FORK ENGINE (Counterfactual Replay)
+   This is the hardest piece by far. You need to:
+     - Take the existing event stream
+     - Remove or modify one event (someone leaves, a booking changes)
+     - Re-derive all downstream balances correctly from that point forward
+     - Do this for 3-4 parallel scenarios simultaneously
+     - Handle booking dependencies:
+         person leaves
+           -> room drops from 4 to 3 occupants
+             -> per-person cost changes
+               -> check if min group size is broken
+                 -> check cancellation policy
+   The cascading dependency graph traversal is what makes this genuinely hard.
+   It is not just math — it is graph propagation with conditional branching.
+
+2. SHAPLEY VALUE CALCULATOR
+   The algorithm is O(n x 2^n) — exponential in participants.
+   For 6 people and 10 activities, that is manageable, but you need to define
+   the characteristic function correctly for each booking type
+   (shared room vs activity vs transport). Getting the math right for partial
+   participation across different subsets is non-trivial.
+
+3. FAIRNESS CONSTITUTION RULE ENGINE
+   Not technically hard, but architecturally subtle. Every balance change must:
+     - Look up applicable rules
+     - Apply them in the correct priority order
+     - Produce a human-readable citation
+   If rules conflict (voluntary withdrawal + group-forced cancel happening
+   simultaneously), resolution priority must be defined and enforced.
+
+
+YELLOW — MODERATE (Real but doable in a hackathon)
+----------------------------------------------------
+
+4. SETTLEMENT ROUTER (Debt Graph Simplification)
+   Min-cash-flow algorithm is well-known (greedy or max-flow based).
+   The challenge is integrating pending refunds, vouchers, and disputed amounts
+   into the graph correctly before running the simplification.
+
+5. EVENT STREAM + LEDGER REPLAY
+   Append-only event log with replay is a standard pattern, but wiring it
+   correctly so every UI element derives from replay (never from stored static
+   state) requires discipline. Easy to cut corners and introduce subtle bugs.
+
+6. MULTI-AGENT COORDINATION
+   If you use a real agent framework (LangGraph, CrewAI), wiring 4 agents to
+   the event stream is moderate work. If you label rule-based functions as
+   agents, it becomes easy.
+
+
+================================================================================
+WHAT TO HARDCODE (SAFE TO FAKE — ZERO IMPACT ON DEMO)
+================================================================================
+
+Component                    What to Fake
+---------------------------  --------------------------------------------------
+AA Bank Feed                 A static JSON array of UPI transactions with
+                             realistic merchant names, amounts, timestamps.
+                             The matching algorithm runs on real logic.
+                             Judges cannot tell the data source is fake.
+                             The demo moment is the one-tap confirmation
+                             prompt, not the API call.
+
+Vendor Booking               Pre-written hotel / airline confirmation strings
+Confirmations                that the Booking Agent parses. The parsing
+                             output (structured event) is what matters.
+                             The input text is just a trigger.
+
+FX Exchange Rates            Hardcode rate snapshots at each event timestamp.
+                             The locking logic and display are the point,
+                             not live rate fetching.
+
+Organizer Deposit Payment    Hardcode as a payment event in the stream.
+                             It is just a seed event. Real or fake, the
+                             downstream math is identical.
+
+AI Mediator Proposals        Rule-based templates that fill in names and
+                             amounts. Judges evaluate the output (3 options
+                             with fairness scores). Whether GPT or a template
+                             produced it is invisible during judging.
+
+Anomaly Detection            Hardcode ranges:
+Thresholds                     hotel_per_night: Rs 500 to Rs 5,000
+                               meal: Rs 100 to Rs 800
+                               etc.
+                             A real ML model would use similar ranges.
+                             The flagging logic is what is being demonstrated.
+
+Settlement Score /           Fake historical data: "Raj — avg settlement: 2 days"
+Reputation                   No real cross-trip data exists for a hackathon.
+                             Judges understand this.
+
+WhatsApp NLP Parsing         Hardcode 2-3 sample phrases with canned parse
+                             results. The UX flow of text-in to structured
+                             event is the demo, not parser accuracy.
+
+The Entire Demo Trip         Pre-seed the 6-person scenario entirely — all
+                             bookings, participants, and payments. This is
+                             standard for every hackathon demo. Nobody
+                             expects live data entry during judging.
+
+Cancellation Policies        Hardcode per-vendor rules, e.g.:
+                             "Hotel X: 20% penalty if cancelled under 48 hrs"
+                             The application of the policy inside the
+                             What-If engine is what must be real.
+
+
+================================================================================
+WHAT YOU CANNOT FAKE (MUST ACTUALLY WORK)
+================================================================================
+
+These are the things judges will probe and where the demo lives or dies.
+
+Component                         Why It Must Be Real
+--------------------------------  -----------------------------------------------
+Event replay producing correct    If a judge changes an input and the number is
+balances                          wrong, everything falls apart immediately.
+
+Trip Fork generating real         The table of 3-4 scenarios with actual cost
+alternate scenarios               diffs must compute correctly on the spot.
+
+Shapley allocation running        Any math-literate judge will ask "how is this
+the actual algorithm              different from equal split?" You need real
+                                  numbers as proof, not a marketing claim.
+
+Graph lighting up on participant  The visual cascade is your signature demo
+removal                           moment — must actually propagate dependencies.
+
+Settlement Router outputting      If A owes B, B owes C, and C owes A, the
+fewer transfers                   router must output 0 transfers. Judges check.
+
+Fairness Constitution rule        The specific rule cited must actually match
+citation                          the change that was made, not be generic text.
+
+"Why do I owe this?" trace        Must actually decompose the balance into its
+                                  event-by-event components, not a static string.
+
+
+================================================================================
+PRIORITY ORDER FOR BUILD TIME
+================================================================================
+
+Build for real (non-negotiable):
+  1. Event stream + replay engine
+  2. Trip Fork / What-If engine with dependency graph
+  3. Shapley calculator (approximation is fine for hackathon scale)
+  4. Settlement router (min-transfer algorithm)
+  5. Fairness rule engine + citation output
+
+Fake confidently (zero guilt):
+  6. AA bank feed                  -> static JSON
+  7. Booking agent                 -> hardcoded parse outputs
+  8. AI Mediator                   -> rule-based templates
+  9. Entire demo scenario          -> pre-seeded data
+  10. Everything else              -> mock data
+
+
+================================================================================
+KEY PRINCIPLE
+================================================================================
+
+Judges are evaluating your reasoning architecture, not your data pipelines.
+
+A real Shapley calculator running on fake trip data is infinitely more impressive
+than a real AA integration with no math behind it.
+
+Fake the inputs. Make the logic real.
+
+
+FLOWCHART - 
+
+
+
+  +--------------------------------------------------+
+  |  STEP 1: Organizer Creates Trip                  |  <- DARK NAVY BOX
+  |  Adds bookings, participants, vendors             |
+  +--------------------------------------------------+
+                          |
+                          v
+  +--------------------------------------------------+
+  |  STEP 2: Participants Join and Consent           |  <- DARK NAVY BOX
+  |  Each person links their bank via AA             |
+  +--------------------------------------------------+
+                          |
+                          v
+  +--------------------------------------------------+
+  |  STEP 3: Event Stream Logs Everything            |  <- DARK NAVY BOX
+  |  Every action is an immutable, append-only event |
+  +--------------------------------------------------+
+                          |
+                          v
+  +--------------------------------------------------+
+  |  *** A CHANGE HAPPENS ***                        |  <- ORANGE BOX (highlight)
+  |  Someone leaves · Activity cancelled             |
+  |  Room upgraded · Booking modified                |
+  +--------------------------------------------------+
+                          |
+                          v
+  +--------------------------------------------------+
+  |  STEP 4: What-If Engine Activates                |  <- DARK NAVY BOX
+  |  3-4 settlement scenarios generated instantly    |
+  +--------------------------------------------------+
+                          |
+                          v
+  +--------------------------------------------------+
+  |  STEP 5: Fairness Constitution Applied           |  <- DARK NAVY BOX
+  |  Exact rule cited for every cost change          |
+  +--------------------------------------------------+
+                          |
+                          v
+  +--------------------------------------------------+
+  |  STEP 6: Group Approves a Scenario               |  <- DARK NAVY BOX
+  |  Private vote — no social pressure               |
+  +--------------------------------------------------+
+                          |
+                          v
+  +--------------------------------------------------+
+  |  STEP 7: Shapley Allocator Recalculates          |  <- DARK NAVY BOX
+  |  Mathematically fair cost redistribution         |
+  +--------------------------------------------------+
+                          |
+                          v
+  +--------------------------------------------------+
+  |  STEP 8: Settlement Router Optimizes             |  <- DARK NAVY BOX
+  |  Minimum number of transfers to settle all debts |
+  +--------------------------------------------------+
+                          |
+                          v
+  +--------------------------------------------------+
+  |  STEP 9: Personal Lens Delivered                 |  <- TEAL / GREEN BOX
+  |  Each person sees their private view: what they  |
+  |  owe, why, and a full event trace                |
+  +--------------------------------------------------+
+
