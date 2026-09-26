@@ -129,3 +129,24 @@ export async function generateTripItinerary(tripId: string) {
 }
 
 export const generateAndSaveItinerary = generateTripItinerary;
+
+export async function createEmptyTripDays(tripId: string, startDate?: string | null, endDate?: string | null) {
+  const start = startDate ? new Date(startDate + 'T00:00:00') : new Date();
+  const end = endDate ? new Date(endDate + 'T00:00:00') : new Date(Date.now() + 2 * 86400000);
+  
+  const diffTime = Math.max(0, end.getTime() - start.getTime());
+  const diffDays = Math.min(30, Math.max(1, Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1));
+
+  for (let i = 0; i < diffDays; i++) {
+    const curDate = new Date(start.getTime() + i * 86400000);
+    const dateStr = curDate.toISOString().split('T')[0];
+    const dayRef = doc(collection(db, 'itinerary_days'));
+    await setDoc(dayRef, {
+      id: dayRef.id,
+      trip_id: tripId,
+      day_date: dateStr,
+      day_index: i + 1,
+      title: `Day ${i + 1}`
+    });
+  }
+}

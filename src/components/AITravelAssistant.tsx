@@ -107,12 +107,12 @@ export default function AITravelAssistant({
         actionCard = {
           type: 'add_item',
           title: 'Add Kolaba Sea Fort',
-          subtitle: 'Day 1 • 04:30 PM • 2 hrs • ~$5 entry',
+          subtitle: 'Day 1 • 04:30 PM • 2 hrs • ~₹400 entry',
           payload: {
             label: 'Kolaba Sea Fort & Walkway',
             dayId: days[0]?.id,
             type: 'activity',
-            cost: 5,
+            cost: 400,
             description: 'Historic sea fortress with scenic views, accessible via tidal walkway.',
             locationName: 'Kolaba Sea Fort',
             latitude: 18.6300,
@@ -124,12 +124,12 @@ export default function AITravelAssistant({
         actionCard = {
           type: 'add_item',
           title: 'Add Sanman Seafood Dinner',
-          subtitle: 'Day 1 • 08:00 PM • ~$18 per person',
+          subtitle: 'Day 1 • 08:00 PM • ~₹1,500 per person',
           payload: {
             label: 'Sanman Local Seafood Dinner',
             dayId: days[0]?.id,
             type: 'dining',
-            cost: 20,
+            cost: 1500,
             description: 'Authentic Konkani seafood thalis and coastal specialties.',
             locationName: 'Sanman Restaurant',
             latitude: 18.6450,

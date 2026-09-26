@@ -192,7 +192,7 @@ export default function ItineraryMap({
             </div>
             ${item.location?.address ? `<div style="font-size: 11px; color: #64748b; margin-bottom: 6px;">${item.location.address}</div>` : ''}
             <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px; border-top: 1px solid #e2e8f0; padding-top: 4px;">
-              <span style="font-weight: 600; color: #334155;">${item.cost > 0 ? '$' + item.cost : 'Free'}</span>
+              <span style="font-weight: 600; color: #334155;">${item.cost > 0 ? '₹' + item.cost : 'Free'}</span>
               <span style="color: #64748b;">${item.estimated_travel_time ? '🚗 ' + item.estimated_travel_time : ''}</span>
             </div>
           </div>

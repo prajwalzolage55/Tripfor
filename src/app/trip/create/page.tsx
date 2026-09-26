@@ -4,8 +4,8 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { createTrip, saveTripPreferences } from '@/lib/db';
-import { generateTripItinerary } from '@/lib/generate';
-import { ChevronRight, ChevronLeft, Loader2, Plane, MapPin, Calendar, Users, IndianRupee, Activity, Navigation, Coffee, Home, Sparkles } from 'lucide-react';
+import { generateTripItinerary, createEmptyTripDays } from '@/lib/generate';
+import { ChevronRight, ChevronLeft, Loader2, Plane, MapPin, Calendar, Users, IndianRupee, Activity, Navigation, Coffee, Home, Sparkles, Plus } from 'lucide-react';
 
 const TRAVEL_STYLES = ['Budget', 'Relaxed', 'Balanced', 'Packed', 'Luxury'];
 const INTERESTS_LIST = ['Beaches', 'Food', 'History', 'Culture', 'Adventure', 'Nature', 'Shopping', 'Nightlife', 'Photography', 'Architecture', 'Family'];
@@ -37,6 +37,7 @@ export default function CreateTripWizard() {
   const [transport, setTransport] = useState<string[]>([]);
   const [food, setFood] = useState('');
   const [accommodation, setAccommodation] = useState('');
+  const [autoGenerateItinerary, setAutoGenerateItinerary] = useState(false);
 
   const toggleInterest = (i: string) => {
     setInterests(prev => prev.includes(i) ? prev.filter(x => x !== i) : [...prev, i]);
@@ -70,8 +71,12 @@ export default function CreateTripWizard() {
         special_requirements: specialReqs
       });
 
-      // 4. Generate the itinerary using the hybrid engine
-      await generateTripItinerary(trip.id);
+      // 4. Generate itinerary or create empty days
+      if (autoGenerateItinerary) {
+        await generateTripItinerary(trip.id);
+      } else {
+        await createEmptyTripDays(trip.id, startDate, endDate);
+      }
 
       // Finish & Redirect to generated dashboard
       router.push(`/trip/${trip.id}/itinerary`);
@@ -223,12 +228,18 @@ export default function CreateTripWizard() {
                   <input className="w-full pl-10 pr-3 py-2 bg-surface-container-low border border-outline-variant rounded-lg font-body-md focus:border-primary focus:outline-none transition-colors" placeholder="e.g. Vegetarian, Street food, Fine dining" value={food} onChange={e => setFood(e.target.value)} />
                 </div>
               </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[0.75rem] font-semibold text-secondary uppercase tracking-wider">Accommodation Preference</label>
-                <div className="relative">
-                  <Home className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary" size={18} />
-                  <input className="w-full pl-10 pr-3 py-2 bg-surface-container-low border border-outline-variant rounded-lg font-body-md focus:border-primary focus:outline-none transition-colors" placeholder="e.g. Hostels, Boutique Hotels, Resorts" value={accommodation} onChange={e => setAccommodation(e.target.value)} />
-                </div>
+              <div className="flex items-start gap-3 p-3.5 rounded-xl bg-surface-container-low border border-outline-variant mt-2">
+                <input
+                  type="checkbox"
+                  id="autoGenCheck"
+                  checked={autoGenerateItinerary}
+                  onChange={e => setAutoGenerateItinerary(e.target.checked)}
+                  className="mt-0.5 rounded text-primary focus:ring-primary w-4 h-4 cursor-pointer"
+                />
+                <label htmlFor="autoGenCheck" className="text-xs text-secondary cursor-pointer leading-relaxed">
+                  <span className="font-semibold text-on-surface block mb-0.5">Auto-generate sample activities with AI</span>
+                  Check this to generate sample recommendations (meals, sights). Leave unchecked to start with a completely empty, fresh itinerary.
+                </label>
               </div>
             </div>
           )}
@@ -246,8 +257,8 @@ export default function CreateTripWizard() {
             </button>
           ) : (
             <button type="button" onClick={handleCreateTrip} disabled={loading} className="flex items-center gap-2 px-6 py-2.5 bg-primary text-on-primary hover:bg-primary-container rounded-lg font-body-sm font-medium transition-colors disabled:opacity-50">
-              {loading ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-              Generate Itinerary
+              {loading ? <Loader2 size={16} className="animate-spin" /> : autoGenerateItinerary ? <Sparkles size={16} /> : <Plus size={16} />}
+              {autoGenerateItinerary ? 'Generate Itinerary' : 'Create Trip'}
             </button>
           )}
         </div>

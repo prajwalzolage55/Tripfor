@@ -577,6 +577,20 @@ export default function ItineraryPage() {
     loadData();
   }
 
+  async function handleClearAllActivities() {
+    if (!confirm('Are you sure you want to remove all activities from this itinerary?')) return;
+    try {
+      const q = query(collection(db, 'itinerary_items'), where('trip_id', '==', tripId));
+      const snap = await getDocs(q);
+      for (const d of snap.docs) {
+        await deleteDoc(d.ref);
+      }
+      loadData();
+    } catch (err) {
+      console.error('Error clearing activities:', err);
+    }
+  }
+
   function toggleMember(id: string) {
     setFormSelectedMembers(prev =>
       prev.includes(id) ? prev.filter(m => m !== id) : [...prev, id]
@@ -672,6 +686,18 @@ export default function ItineraryPage() {
               </button>
             </div>
 
+            {/* Clear All Activities */}
+            {items.length > 0 && (
+              <button
+                onClick={handleClearAllActivities}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-500 bg-white border border-slate-200 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50/50 transition-colors shadow-xs"
+                title="Remove all activities to start with an empty itinerary"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Clear All</span>
+              </button>
+            )}
+
             {/* Add Activity */}
             <button
               onClick={() => openCreateModal()}
@@ -689,10 +715,10 @@ export default function ItineraryPage() {
             <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Est. Budget Used</span>
             <div className="flex items-baseline gap-1.5">
               <span className={`text-lg font-bold ${isOverBudget ? 'text-rose-600' : 'text-slate-900'}`}>
-                ${totalCost.toLocaleString()}
+                ₹{totalCost.toLocaleString('en-IN')}
               </span>
               {totalBudget > 0 && (
-                <span className="text-xs text-slate-400 font-medium">/ ${totalBudget.toLocaleString()}</span>
+                <span className="text-xs text-slate-400 font-medium">/ ₹{totalBudget.toLocaleString('en-IN')}</span>
               )}
             </div>
             {totalBudget > 0 && (
@@ -859,7 +885,7 @@ export default function ItineraryPage() {
                               )}
                             </div>
                             <p className="text-xs text-slate-500">
-                              {formatDayDate(day.day_date)} • {dayItems.length} activities • ${dayCost.toLocaleString()} est.
+                              {formatDayDate(day.day_date)} • {dayItems.length} activities • ₹{dayCost.toLocaleString('en-IN')} est.
                             </p>
                           </div>
                         </div>
@@ -1001,7 +1027,7 @@ export default function ItineraryPage() {
                                     <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
                                       <div className="text-right">
                                         <div className="text-sm font-bold text-slate-900">
-                                          {item.cost && item.cost > 0 ? `$${item.cost}` : 'Free'}
+                                          {item.cost && item.cost > 0 ? `₹${item.cost.toLocaleString('en-IN')}` : 'Free'}
                                         </div>
                                         <div className="text-[10px] text-slate-400 capitalize">
                                           {item.default_split_type.replace(/_/g, ' ')}
@@ -1409,7 +1435,7 @@ export default function ItineraryPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
-                    Estimated Cost ($)
+                    Estimated Cost (₹)
                   </label>
                   <input
                     type="number"
