@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, doc, setDoc, deleteDoc, orderBy } from 'firebase/firestore';
 import { useAuth } from '@/components/AuthProvider';
+import { dispatchExpenseNotification } from '@/lib/notifications';
 import type { Expense, ItineraryItem, TripMember, ItemParticipant, SplitType } from '@/lib/types';
 import {
   Plus, Receipt, DollarSign, Upload, Image, X, Loader2, Check, User, Tag, ChevronDown, Trash2,
@@ -18,6 +19,7 @@ const SPLIT_OPTIONS: { value: SplitType; label: string }[] = [
 ];
 
 export default function ExpensesPage() {
+  const { user: authUser } = useAuth();
   const params = useParams();
   const tripId = params.id as string;
 
@@ -128,17 +130,32 @@ export default function ExpensesPage() {
 
     try {
       const expRef = doc(collection(db, 'expenses'));
+      const parsedAmount = parseFloat(formAmount);
       await setDoc(expRef, {
         id: expRef.id,
         trip_id: tripId,
         item_id: formItemId || null,
-        amount: parseFloat(formAmount),
+        amount: parsedAmount,
         paid_by: formPaidBy,
         split_type: formSplitType,
         receipt_url: formReceipt || null,
         note: formNote || null,
         created_at: new Date().toISOString()
       });
+
+      // Dispatch push notification to trip members (e.g. ₹5,000 for dinner)
+      const payer = members.find(m => m.id === formPaidBy);
+      const payerName = payer?.display_name || authUser?.display_name || 'A group member';
+      const payerUserId = payer?.user_id || authUser?.id || '';
+
+      dispatchExpenseNotification({
+        tripId,
+        tripName: 'Trip',
+        payerId: payerUserId,
+        payerName,
+        amount: parsedAmount,
+        note: formNote || null,
+      }).catch(err => console.warn('Push notification dispatch error:', err));
 
       setShowForm(false);
       setFormItemId('');
