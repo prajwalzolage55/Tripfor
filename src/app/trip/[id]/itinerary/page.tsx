@@ -17,6 +17,7 @@ import type {
 } from '@/lib/types';
 import { recalculateDaySequence, ALTERNATIVE_LOCATIONS } from '@/lib/itinerary-recalculate';
 import ItineraryMap from '@/components/ItineraryMap';
+import { geocodeLocation, isSampleActivity } from '@/lib/geocoding';
 import {
   Plus, Plane, Hotel, Activity, Car, UtensilsCrossed, MoreHorizontal,
   Calendar, DollarSign, Users, X, Trash2, Edit3, Check, Ban, Loader2,
@@ -79,16 +80,6 @@ const SPLIT_OPTIONS: { value: SplitType; label: string }[] = [
   { value: 'organizer_paid', label: 'Organizer Paid (no split)' },
 ];
 
-const POPULAR_SPOTS_ALIBAG: { name: string; address: string; lat: number; lng: number; cat: ItemType }[] = [
-  { name: 'Kolaba Sea Fort', address: 'Near Alibag Beach', lat: 18.6300, lng: 72.8600, cat: 'activity' },
-  { name: 'Alibag Beach', address: 'Beach Rd, Alibag', lat: 18.6414, lng: 72.8722, cat: 'activity' },
-  { name: 'Varsoli Beach', address: 'Varsoli, Alibag', lat: 18.6600, lng: 72.8700, cat: 'activity' },
-  { name: 'Mandwa Jetty & Beach', address: 'Mandwa, Alibag', lat: 18.7900, lng: 72.8800, cat: 'activity' },
-  { name: 'Nagaon Beach', address: 'Nagaon, Alibag', lat: 18.5700, lng: 72.9000, cat: 'activity' },
-  { name: 'Kihim Beach', address: 'Kihim, Alibag', lat: 18.7200, lng: 72.8700, cat: 'activity' },
-  { name: 'Sanman Restaurant', address: 'Alibag City Center', lat: 18.6450, lng: 72.8740, cat: 'dining' },
-];
-
 export default function ItineraryPage() {
   const params = useParams();
   const router = useRouter();
@@ -125,6 +116,7 @@ export default function ItineraryPage() {
   const [formAddress, setFormAddress] = useState('');
   const [formLatitude, setFormLatitude] = useState('');
   const [formLongitude, setFormLongitude] = useState('');
+  const [geocodingLoc, setGeocodingLoc] = useState(false);
 
   const [saving, setSaving] = useState(false);
 
@@ -169,9 +161,73 @@ export default function ItineraryPage() {
         location: item.location_id ? locMap[item.location_id] : undefined
       }));
 
+      // Auto-heal items without coordinates (e.g. user items with destination "THAILAND")
+      const destName = tripDoc.exists() ? (tripDoc.data()?.destination || '') : '';
+      const itemsToUpdateCoords: { item: ItineraryItem; lat: number; lng: number }[] = [];
+      for (const item of loadedItems) {
+        const hasCoords =
+          item.location &&
+          typeof item.location.latitude === 'number' &&
+          typeof item.location.longitude === 'number' &&
+          !isNaN(item.location.latitude) &&
+          !isNaN(item.location.longitude);
+
+        if (!hasCoords && item.status === 'active') {
+          const locName = item.location?.name || item.location?.address || item.label;
+          const resolved = await geocodeLocation(locName, destName);
+          if (resolved) {
+            item.location = {
+              ...(item.location || {
+                id: item.location_id || crypto.randomUUID(),
+                name: locName,
+                category: 'activity' as const,
+                description: null,
+                address: null,
+                opening_hours: null,
+                recommended_duration: null,
+                entry_fee: 0,
+                estimated_spending: 0,
+                rating: null,
+                best_time_to_visit: null,
+                created_at: new Date().toISOString(),
+              }),
+              latitude: resolved.lat,
+              longitude: resolved.lng,
+            };
+            itemsToUpdateCoords.push({ item, lat: resolved.lat, lng: resolved.lng });
+          }
+        }
+      }
+
       setDays(loadedDays);
       setItems(loadedItems);
       setMembers(loadedMembers);
+
+      // Persist healed coordinates in Firestore asynchronously
+      if (itemsToUpdateCoords.length > 0) {
+        (async () => {
+          try {
+            for (const { item, lat, lng } of itemsToUpdateCoords) {
+              const locId = item.location_id || item.location?.id || crypto.randomUUID();
+              await setDoc(doc(db, 'locations', locId), {
+                id: locId,
+                name: item.location?.name || item.label,
+                category: item.type === 'dining' ? 'restaurant' : 'attraction',
+                latitude: lat,
+                longitude: lng,
+              }, { merge: true });
+
+              if (!item.location_id) {
+                await setDoc(doc(db, 'itinerary_items', item.id), {
+                  location_id: locId,
+                }, { merge: true });
+              }
+            }
+          } catch (e) {
+            console.warn('Failed to persist healed coordinates:', e);
+          }
+        })();
+      }
 
       // Load participants
       if (loadedItems.length > 0) {
@@ -405,7 +461,7 @@ export default function ItineraryPage() {
   }
 
   // Form actions
-  function openCreateModal(defaultDayId?: string) {
+  function openCreateModal(defaultDayId?: string, lat?: number, lng?: number) {
     setEditingId(null);
     setFormType('activity');
     setFormLabel('');
@@ -414,10 +470,10 @@ export default function ItineraryPage() {
     setFormCost('');
     setFormSplitType('equal');
     setFormDescription('');
-    setFormLocationName('');
+    setFormLocationName(trip?.destination || '');
     setFormAddress('');
-    setFormLatitude('');
-    setFormLongitude('');
+    setFormLatitude(lat !== undefined ? lat.toFixed(6) : '');
+    setFormLongitude(lng !== undefined ? lng.toFixed(6) : '');
     setFormSelectedMembers(members.map(m => m.id));
     setFormDayId(defaultDayId || (days[0]?.id || ''));
     setShowForm(true);
@@ -441,31 +497,6 @@ export default function ItineraryPage() {
     setShowForm(true);
   }
 
-  function handleSelectPresetLocation(preset: typeof POPULAR_SPOTS_ALIBAG[0]) {
-    setFormLocationName(preset.name);
-    setFormLabel(preset.name);
-    setFormAddress(preset.address);
-    setFormLatitude(preset.lat.toString());
-    setFormLongitude(preset.lng.toString());
-    
-    // Normalize category to valid ItemType
-    let mappedType: ItemType = 'activity';
-    if (preset.cat === 'dining' || (preset as any).cat === 'restaurant') {
-      mappedType = 'dining';
-    } else if (preset.cat === 'transfer' || (preset as any).cat === 'transit') {
-      mappedType = 'transfer';
-    } else if (preset.cat === 'hotel') {
-      mappedType = 'hotel';
-    } else if (preset.cat === 'flight') {
-      mappedType = 'flight';
-    } else if (preset.cat === 'other') {
-      mappedType = 'other';
-    } else {
-      mappedType = 'activity';
-    }
-    setFormType(mappedType);
-  }
-
   async function handleSaveItem(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
@@ -485,9 +516,21 @@ export default function ItineraryPage() {
       }
 
       let locationId: string | null = null;
+      let finalLat: number | null = formLatitude ? parseFloat(formLatitude) : null;
+      let finalLng: number | null = formLongitude ? parseFloat(formLongitude) : null;
+
+      // Automatically geocode location or label if coordinates are not manually entered
+      if ((finalLat === null || finalLng === null || isNaN(finalLat) || isNaN(finalLng)) && (formLocationName.trim() || formLabel.trim())) {
+        const queryToGeocode = formLocationName.trim() || formLabel.trim();
+        const geoRes = await geocodeLocation(queryToGeocode, trip?.destination);
+        if (geoRes) {
+          finalLat = geoRes.lat;
+          finalLng = geoRes.lng;
+        }
+      }
 
       // If location information / coordinates are provided, upsert into locations table
-      if (formLocationName.trim() || (formLatitude && formLongitude)) {
+      if (formLocationName.trim() || (finalLat !== null && finalLng !== null)) {
         const locId = crypto.randomUUID();
         const locCategory = 
           sanitizedType === 'dining' ? 'restaurant' : 
@@ -499,8 +542,8 @@ export default function ItineraryPage() {
           name: formLocationName.trim() || formLabel.trim(),
           category: locCategory,
           address: formAddress.trim() || null,
-          latitude: formLatitude ? parseFloat(formLatitude) : null,
-          longitude: formLongitude ? parseFloat(formLongitude) : null,
+          latitude: finalLat,
+          longitude: finalLng,
         }, { merge: true })
         .then(() => ({ error: null }))
         .catch(err => ({ error: err }));
@@ -590,6 +633,30 @@ export default function ItineraryPage() {
       console.error('Error clearing activities:', err);
     }
   }
+
+  // Remove all dummy / auto-generated sample activities
+  async function handlePurgeSampleActivities() {
+    const sampleItems = items.filter(i => isSampleActivity(i.label));
+    if (sampleItems.length === 0) {
+      alert('No sample template activities found.');
+      return;
+    }
+    if (!confirm(`Remove ${sampleItems.length} auto-generated sample activities (e.g. Breakfast, Dinner, Fort, etc.)? Your custom activities will be preserved.`)) return;
+    setLoading(true);
+    try {
+      for (const item of sampleItems) {
+        await deleteDoc(doc(db, 'itinerary_items', item.id));
+      }
+      await loadData();
+    } catch (err: any) {
+      alert('Error removing dummy activities: ' + (err?.message || 'Unknown error'));
+      setLoading(false);
+    }
+  }
+
+  const sampleActivities = useMemo(() => {
+    return items.filter(i => isSampleActivity(i.label));
+  }, [items]);
 
   function toggleMember(id: string) {
     setFormSelectedMembers(prev =>
@@ -686,6 +753,18 @@ export default function ItineraryPage() {
               </button>
             </div>
 
+            {/* Purge Dummy / Sample Activities */}
+            {sampleActivities.length > 0 && (
+              <button
+                onClick={handlePurgeSampleActivities}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 hover:bg-amber-100 hover:border-amber-300 transition-colors shadow-xs"
+                title="Remove auto-generated sample activities (Breakfast, Dinner, Fort, etc.)"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                <span>Remove Sample Data ({sampleActivities.length})</span>
+              </button>
+            )}
+
             {/* Clear All Activities */}
             {items.length > 0 && (
               <button
@@ -775,6 +854,32 @@ export default function ItineraryPage() {
           </div>
         </div>
       </div>
+
+      {/* ── DUMMY DATA PURGE BANNER ── */}
+      {sampleActivities.length > 0 && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/90 rounded-2xl shadow-xs">
+          <div className="flex items-start sm:items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-amber-500/15 flex items-center justify-center flex-shrink-0 text-amber-700">
+              <AlertTriangle className="w-4 h-4 text-amber-600" />
+            </div>
+            <div>
+              <div className="text-xs font-bold text-amber-950">
+                Found {sampleActivities.length} auto-generated sample activities
+              </div>
+              <div className="text-[11px] text-amber-800/80 mt-0.5">
+                Template items (&ldquo;{sampleActivities.slice(0, 3).map(s => s.label).join('”, “')}&rdquo;) can be removed in one click. Your custom plans like &ldquo;{items.find(i => !isSampleActivity(i.label))?.label || 'your custom activities'}&rdquo; will be preserved.
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={handlePurgeSampleActivities}
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-amber-600 text-white rounded-xl text-xs font-bold hover:bg-amber-700 transition shadow-xs self-start sm:self-auto flex-shrink-0"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Remove Dummy Data ({sampleActivities.length})</span>
+          </button>
+        </div>
+      )}
 
       {/* ── DAY SELECTOR & CATEGORY FILTERS ── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1157,10 +1262,8 @@ export default function ItineraryPage() {
                 dayTitle={activeDayTitle}
                 onAddLocationClick={() => openCreateModal()}
                 onMapClick={(lat, lng) => {
-                  openCreateModal();
-                  setFormLatitude(lat.toFixed(6));
-                  setFormLongitude(lng.toFixed(6));
-                  setFormLocationName(`Custom Stop (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
+                  openCreateModal(undefined, lat, lng);
+                  setFormLocationName(`Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
                 }}
                 onMarkerClick={(itemId) => {
                   setHighlightedItemId(itemId);
@@ -1313,56 +1416,75 @@ export default function ItineraryPage() {
                 />
               </div>
 
-              {/* Quick Preset Places if destination matches Alibag */}
-              {(trip?.destination || '').toLowerCase().includes('alibag') && (
-                <div className="space-y-1.5 p-3 rounded-xl bg-slate-50 border border-slate-200/80">
-                  <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1">
-                    <MapPin className="w-3 h-3 text-indigo-600" />
-                    Quick Pick Alibag Spot:
-                  </span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {POPULAR_SPOTS_ALIBAG.map(spot => (
-                      <button
-                        type="button"
-                        key={spot.name}
-                        onClick={() => handleSelectPresetLocation(spot)}
-                        className="text-[11px] px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-slate-700 hover:border-indigo-400 hover:text-indigo-600 transition font-medium"
-                      >
-                        + {spot.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {/* Map Location & Coordinates */}
               <div className="p-3.5 rounded-xl border border-indigo-100 bg-indigo-50/20 space-y-3">
-                <span className="text-xs font-bold text-indigo-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <Navigation className="w-3.5 h-3.5 text-indigo-600" />
-                  Map Pin Details (Shows on Route Map)
-                </span>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-indigo-900 uppercase tracking-wider flex items-center gap-1.5">
+                    <Navigation className="w-3.5 h-3.5 text-indigo-600" />
+                    Map Pin Details (Shows on Route Map)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!formLocationName.trim() && !formLabel.trim()) return;
+                      setGeocodingLoc(true);
+                      const res = await geocodeLocation(formLocationName || formLabel, trip?.destination);
+                      setGeocodingLoc(false);
+                      if (res) {
+                        setFormLatitude(res.lat.toFixed(6));
+                        setFormLongitude(res.lng.toFixed(6));
+                      } else {
+                        alert('Could not auto-locate exact coordinates. You can click on the map to drop a pin.');
+                      }
+                    }}
+                    className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 transition"
+                  >
+                    {geocodingLoc ? <Loader2 className="w-3 h-3 animate-spin" /> : <Navigation className="w-3 h-3" />}
+                    <span>Auto-Find Coordinates</span>
+                  </button>
+                </div>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <div className="space-y-1">
                     <label className="text-[11px] font-medium text-slate-600">Location / Venue Name</label>
                     <input
                       type="text"
-                      placeholder="e.g. Kolaba Fort"
+                      placeholder={`e.g. ${trip?.destination || 'Bangkok, Pattaya, etc.'}`}
                       value={formLocationName}
                       onChange={e => setFormLocationName(e.target.value)}
                       className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs focus:ring-1 focus:ring-indigo-500"
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[11px] font-medium text-slate-600">Address / Area</label>
+                    <label className="text-[11px] font-medium text-slate-600">Address / City</label>
                     <input
                       type="text"
-                      placeholder="e.g. Alibag Beach Rd"
+                      placeholder="e.g. City, Region or Address"
                       value={formAddress}
                       onChange={e => setFormAddress(e.target.value)}
                       className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs focus:ring-1 focus:ring-indigo-500"
                     />
                   </div>
+                </div>
+
+                <div className="pt-1 flex items-center justify-between text-xs border-t border-indigo-100/60">
+                  {formLatitude && formLongitude ? (
+                    <div className="flex items-center gap-1.5 text-emerald-600 font-semibold text-[11px]">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Plotted pin: {parseFloat(formLatitude).toFixed(4)}, {parseFloat(formLongitude).toFixed(4)}</span>
+                      <button
+                        type="button"
+                        onClick={() => { setFormLatitude(''); setFormLongitude(''); }}
+                        className="text-slate-400 hover:text-rose-500 underline ml-2"
+                      >
+                        Reset
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-[11px] text-slate-500">
+                      Coordinates will automatically resolve for {trip?.destination || 'destination'}, or click on the map to pin.
+                    </span>
+                  )}
                 </div>
               </div>
 
