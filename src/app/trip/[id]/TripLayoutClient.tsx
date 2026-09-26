@@ -5,7 +5,17 @@ import { useParams, usePathname, useRouter } from 'next/navigation';
 import { getTrip } from '@/lib/db';
 import { useAuth } from '@/components/AuthProvider';
 import type { Trip } from '@/lib/types';
+import { motion } from 'framer-motion';
+import { ReactLenis } from 'lenis/react';
 import { Map, Receipt, Users, User, ArrowLeft, Copy, Check, History, GitFork, Scale, Network, Sparkles, ArrowRightLeft } from 'lucide-react';
+import Link from 'next/link';
+
+const COLORS = {
+  burgundy: '#791523',
+  cream: '#eadecd',
+  offWhite: '#fdfbfa',
+  rose: '#d05461'
+};
 
 const NAV_ITEMS = [
   { key: 'itinerary', label: 'Itinerary', icon: Map },
@@ -58,152 +68,80 @@ export default function TripLayoutClient({ children }: { children: React.ReactNo
   }
 
   return (
-    <div className="trip-layout">
-      <style>{`
-        .trip-layout {
-          min-height: 100vh;
-          display: flex;
-          flex-direction: column;
-        }
-        .trip-topbar {
-          display: flex;
-          align-items: center;
-          gap: 1rem;
-          padding: 0.875rem 1.5rem;
-          border-bottom: 1px solid var(--color-glass-border);
-          background: rgba(255, 255, 255, 0.8);
-          backdrop-filter: blur(12px);
-          position: sticky;
-          top: 0;
-          z-index: 50;
-        }
-        .trip-topbar-back {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 32px;
-          height: 32px;
-          border-radius: 8px;
-          border: 1px solid var(--color-glass-border);
-          background: transparent;
-          color: var(--color-text-secondary);
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-        .trip-topbar-back:hover {
-          background: var(--color-surface-100);
-          color: var(--color-text-primary);
-        }
-        .trip-topbar-info {
-          flex: 1;
-          min-width: 0;
-        }
-        .trip-topbar-info h1 {
-          font-size: 1rem;
-          font-weight: 700;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-        .trip-topbar-info .sub {
-          font-size: 0.75rem;
-          color: var(--color-text-muted);
-        }
-        .trip-invite-btn {
-          display: flex;
-          align-items: center;
-          gap: 0.375rem;
-          padding: 0.375rem 0.75rem;
-          border-radius: var(--radius-input);
-          background: var(--color-surface-100);
-          border: 1px solid var(--color-glass-border);
-          color: var(--color-brand-400);
-          font-family: monospace;
-          font-size: 0.8125rem;
-          cursor: pointer;
-          transition: border-color 0.2s;
-        }
-        .trip-invite-btn:hover {
-          border-color: var(--color-brand-500);
-        }
-        .trip-nav {
-          display: flex;
-          border-bottom: 1px solid var(--color-glass-border);
-          background: var(--color-surface-0);
-          overflow-x: auto;
-        }
-        .trip-nav-item {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          padding: 0.75rem 1.25rem;
-          font-size: 0.8125rem;
-          font-weight: 600;
-          color: var(--color-text-muted);
-          background: none;
-          border: none;
-          border-bottom: 2px solid transparent;
-          cursor: pointer;
-          transition: all 0.2s;
-          white-space: nowrap;
-        }
-        .trip-nav-item:hover {
-          color: var(--color-text-secondary);
-        }
-        .trip-nav-item.active {
-          color: var(--color-brand-400);
-          border-bottom-color: var(--color-brand-500);
-        }
-        .trip-content {
-          flex: 1;
-          padding: 1.5rem;
-          max-width: 1100px;
-          width: 100%;
-          margin: 0 auto;
-        }
-        @media (max-width: 640px) {
-          .trip-content {
-            padding: 1rem;
-          }
-          .trip-nav-item {
-            padding: 0.625rem 0.875rem;
-            font-size: 0.75rem;
-          }
-        }
-      `}</style>
+    <ReactLenis root>
+      <div className="min-h-screen flex flex-col font-['Inter']" style={{ backgroundColor: COLORS.offWhite, color: COLORS.burgundy }}>
+        
+        {/* Top Navbar */}
+        <nav className="sticky top-0 z-50 flex items-center justify-between px-6 py-4 backdrop-blur-lg border-b bg-[#fdfbfa]/90" style={{ borderColor: `${COLORS.cream}` }}>
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => router.push('/dashboard')}
+              className="w-10 h-10 rounded-full flex items-center justify-center transition-transform hover:-translate-x-1 hover:bg-black/5"
+              style={{ color: COLORS.burgundy }}
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div className="flex flex-col">
+              <h1 className="text-xl font-black tracking-tight leading-none">{trip?.name || 'Loading Trip...'}</h1>
+              {trip?.destination && <span className="text-sm font-semibold opacity-60 mt-1">{trip.destination}</span>}
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-4">
+            {trip && (
+              <button
+                onClick={copyInvite}
+                className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-full font-mono text-sm font-bold transition-all hover:scale-105 shadow-sm"
+                style={{ backgroundColor: COLORS.cream, color: COLORS.burgundy }}
+                title="Copy Invite Code"
+              >
+                {trip.invite_code}
+                {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+              </button>
+            )}
+          </div>
+        </nav>
 
-      <div className="trip-topbar">
-        <button className="trip-topbar-back" onClick={() => router.push('/dashboard')}>
-          <ArrowLeft size={16} />
-        </button>
-        <div className="trip-topbar-info">
-          <h1>{trip?.name || '...'}</h1>
-          {trip?.destination && <span className="sub">{trip.destination}</span>}
+        {/* Tab Navigation */}
+        <div className="sticky top-[73px] z-40 border-b bg-[#fdfbfa]/95 backdrop-blur-md overflow-x-auto scrollbar-hide" style={{ borderColor: COLORS.cream }}>
+          <div className="flex px-4 max-w-7xl mx-auto">
+            {NAV_ITEMS.map((item) => {
+              const isActive = activeTab === item.key;
+              return (
+                <button
+                  key={item.key}
+                  onClick={() => router.push(`/trip/${tripId}/${item.key}`)}
+                  className={`relative flex items-center gap-2 px-5 py-4 text-sm font-bold whitespace-nowrap transition-colors`}
+                  style={{ color: isActive ? COLORS.burgundy : `${COLORS.burgundy}80` }}
+                >
+                  <item.icon className="w-4 h-4" />
+                  {item.label}
+                  {isActive && (
+                    <motion.div
+                      layoutId="activeTab"
+                      className="absolute bottom-0 left-0 right-0 h-1 rounded-t-full"
+                      style={{ backgroundColor: COLORS.rose }}
+                      transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                    />
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
-        {trip && (
-          <button className="trip-invite-btn" onClick={copyInvite} title="Copy invite code">
-            {trip.invite_code}
-            {copied ? <Check size={14} style={{ color: 'var(--color-success-500)' }} /> : <Copy size={14} />}
-          </button>
-        )}
-      </div>
 
-      <nav className="trip-nav">
-        {NAV_ITEMS.map(item => (
-          <button
-            key={item.key}
-            className={`trip-nav-item ${activeTab === item.key ? 'active' : ''}`}
-            onClick={() => router.push(`/trip/${tripId}/${item.key}`)}
+        {/* Main Content Area */}
+        <main className="flex-1 w-full max-w-7xl mx-auto p-6 md:p-8">
+          <motion.div
+            key={activeTab}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: "easeOut" }}
           >
-            <item.icon size={16} />
-            {item.label}
-          </button>
-        ))}
-      </nav>
-
-      <div className="trip-content">
-        {children}
+            {children}
+          </motion.div>
+        </main>
       </div>
-    </div>
+    </ReactLenis>
   );
 }

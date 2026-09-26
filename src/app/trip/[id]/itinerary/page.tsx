@@ -15,6 +15,7 @@ import type {
   ItineraryDayRecord,
   LocationRecord,
 } from '@/lib/types';
+import { motion, AnimatePresence } from 'framer-motion';
 import { recalculateDaySequence, ALTERNATIVE_LOCATIONS } from '@/lib/itinerary-recalculate';
 import ItineraryMap from '@/components/ItineraryMap';
 import { geocodeLocation, isSampleActivity } from '@/lib/geocoding';
@@ -742,9 +743,15 @@ export default function ItineraryPage() {
   }
 
   return (
-    <div className="space-y-6 pb-24">
+    <motion.div 
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}
+      className="space-y-6 pb-24 font-['Inter']"
+    >
       {/* ── TOP DASHBOARD OVERVIEW ── */}
-      <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-slate-50/50 to-indigo-50/30 p-6 shadow-xs backdrop-blur-xs">
+      <motion.div 
+        initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: "easeOut" }}
+        className="relative overflow-hidden rounded-[2rem] border border-slate-200/80 bg-gradient-to-br from-white via-slate-50/50 to-indigo-50/30 p-8 shadow-xl backdrop-blur-md"
+      >
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
@@ -921,7 +928,7 @@ export default function ItineraryPage() {
             </div>
           </div>
         </div>
-      </div>
+      </motion.div>
 
       {/* ── DUMMY DATA PURGE BANNER ── */}
       {sampleActivities.length > 0 && (
@@ -1037,9 +1044,13 @@ export default function ItineraryPage() {
                     .reduce((sum, item) => sum + (Number(item.cost) || 0), 0);
 
                   return (
-                    <div key={day.id} className="space-y-4">
+                    <motion.div 
+                      key={day.id} 
+                      initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ type: "spring", stiffness: 120, damping: 20 }}
+                      className="space-y-4"
+                    >
                       {/* Day Header Card */}
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-md">
                         <div className="flex items-center gap-3">
                           <div className="flex flex-col items-center justify-center w-12 h-12 rounded-xl bg-slate-900 text-white font-bold flex-shrink-0 shadow-sm">
                             <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Day</span>
@@ -1103,13 +1114,14 @@ export default function ItineraryPage() {
                                 />
 
                                 {/* Activity Card */}
-                                <div
-                                  className={`rounded-xl border p-4 transition-all duration-200 bg-white ${
+                                <motion.div
+                                  whileHover={{ x: 4 }}
+                                  className={`rounded-2xl border p-5 transition-all duration-300 bg-white ${
                                     isCancelled
                                       ? 'opacity-60 border-slate-200 bg-slate-50/50'
                                       : isHighlighted
-                                      ? 'border-indigo-400 shadow-md ring-2 ring-indigo-100'
-                                      : 'border-slate-200/90 hover:border-indigo-300 hover:shadow-sm'
+                                      ? 'border-indigo-400 shadow-xl ring-2 ring-indigo-100 scale-[1.02]'
+                                      : 'border-slate-200/90 hover:border-indigo-300 hover:shadow-lg'
                                   }`}
                                 >
                                   <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
@@ -1288,7 +1300,7 @@ export default function ItineraryPage() {
                                       </div>
                                     </div>
                                   )}
-                                </div>
+                                </motion.div>
 
                                 {/* Travel Buffer between this and next activity */}
                                 {idx < dayItems.length - 1 && (
@@ -1312,7 +1324,7 @@ export default function ItineraryPage() {
                           })}
                         </div>
                       )}
-                    </div>
+                    </motion.div>
                   );
                 })
             )}
@@ -1717,6 +1729,6 @@ export default function ItineraryPage() {
           </div>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }

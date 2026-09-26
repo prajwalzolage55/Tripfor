@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/components/AuthProvider";
 import PermissionModal from "@/components/PermissionModal";
+import LenisProvider from "@/components/LenisProvider";
 
 export const metadata: Metadata = {
   title: "GroupTrip Ledger — Split Travel Expenses Effortlessly",
@@ -24,8 +25,10 @@ export default function RootLayout({
       </head>
       <body>
         <AuthProvider>
-          <PermissionModal />
-          {children}
+          <LenisProvider>
+            <PermissionModal />
+            {children}
+          </LenisProvider>
         </AuthProvider>
       </body>
     </html>

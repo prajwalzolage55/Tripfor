@@ -3,15 +3,24 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, doc, setDoc, deleteDoc, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { useAuth } from '@/components/AuthProvider';
 import { dispatchExpenseNotification } from '@/lib/notifications';
 import { appendEvent } from '@/lib/ledger';
 import type { ExpenseAddedPayload, ExpenseDeletedPayload } from '@/lib/ledger';
 import type { Expense, ItineraryItem, TripMember, ItemParticipant, SplitType } from '@/lib/types';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Plus, Receipt, DollarSign, Upload, Image, X, Loader2, Check, User, Tag, ChevronDown, Trash2,
+  Plus, Receipt, DollarSign, Upload, X, Loader2, Check, User, Tag, Trash2,
+  Compass, Map, Sparkles
 } from 'lucide-react';
+
+const COLORS = {
+  burgundy: '#791523',
+  cream: '#eadecd',
+  offWhite: '#fdfbfa',
+  rose: '#d05461'
+};
 
 const SPLIT_OPTIONS: { value: SplitType; label: string }[] = [
   { value: 'equal', label: 'Split Equally' },
@@ -19,6 +28,32 @@ const SPLIT_OPTIONS: { value: SplitType; label: string }[] = [
   { value: 'percentage', label: 'By Percentage' },
   { value: 'organizer_paid', label: 'Organizer Paid' },
 ];
+
+/* ── Framer Motion Variants ── */
+const staggerList = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.05, delayChildren: 0.1 }
+  }
+};
+
+const listItem = {
+  hidden: { opacity: 0, y: 20 },
+  show: {
+    opacity: 1, y: 0,
+    transition: { type: 'spring', stiffness: 300, damping: 25 }
+  }
+};
+
+const modalVariants = {
+  hidden: { opacity: 0, scale: 0.95, y: 20 },
+  visible: {
+    opacity: 1, scale: 1, y: 0,
+    transition: { type: 'spring', stiffness: 300, damping: 25 }
+  },
+  exit: { opacity: 0, scale: 0.95, y: 20, transition: { duration: 0.2 } }
+};
 
 export default function ExpensesPage() {
   const { user: authUser } = useAuth();
@@ -65,7 +100,6 @@ export default function ExpensesPage() {
       setItems(loadedItems);
       setMembers(loadedMembers);
 
-      // Set current member using localStorage auth
       const storedUser = localStorage.getItem('gtl_user');
       if (storedUser && loadedMembers.length > 0) {
         const parsed = JSON.parse(storedUser);
@@ -76,7 +110,6 @@ export default function ExpensesPage() {
         }
       }
 
-      // Load participants for all items
       if (loadedItems.length > 0) {
         const partsQ = query(collection(db, 'item_participants'));
         const partsRes = await getDocs(partsQ);
@@ -96,7 +129,7 @@ export default function ExpensesPage() {
     } finally {
       setLoading(false);
     }
-  }, [tripId]);
+  }, [tripId, formPaidBy]);
 
   useEffect(() => {
     loadData();
@@ -105,7 +138,6 @@ export default function ExpensesPage() {
   async function uploadReceipt(file: File) {
     if (!file) return;
     setUploading(true);
-
     try {
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -126,12 +158,9 @@ export default function ExpensesPage() {
   async function saveExpense(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-
     try {
       const expRef = doc(collection(db, 'expenses'));
       const parsedAmount = parseFloat(formAmount);
-
-      // Determine participants for this expense
       const expParticipants = formItemId && participantsMap[formItemId]
         ? participantsMap[formItemId].map(p => p.member_id)
         : members.map(m => m.id);
@@ -148,7 +177,6 @@ export default function ExpensesPage() {
         created_at: new Date().toISOString()
       });
 
-      // Emit event to the ledger event stream
       const storedUser = localStorage.getItem('gtl_user');
       const actorId = storedUser ? JSON.parse(storedUser).id : 'unknown';
       const eventPayload: ExpenseAddedPayload = {
@@ -162,22 +190,17 @@ export default function ExpensesPage() {
         note: formNote || null,
         receiptUrl: formReceipt || null,
       };
-      appendEvent(tripId, 'EXPENSE_ADDED', actorId, eventPayload)
-        .catch(err => console.warn('Ledger event append error:', err));
+      appendEvent(tripId, 'EXPENSE_ADDED', actorId, eventPayload).catch(err => console.warn(err));
 
-      // Dispatch push notification to trip members (e.g. ₹5,000 for dinner)
       const payer = members.find(m => m.id === formPaidBy);
-      const payerName = payer?.display_name || authUser?.display_name || 'A group member';
-      const payerUserId = payer?.user_id || authUser?.id || '';
-
       dispatchExpenseNotification({
         tripId,
         tripName: 'Trip',
-        payerId: payerUserId,
-        payerName,
+        payerId: payer?.user_id || authUser?.id || '',
+        payerName: payer?.display_name || authUser?.display_name || 'A group member',
         amount: parsedAmount,
         note: formNote || null,
-      }).catch(err => console.warn('Push notification dispatch error:', err));
+      }).catch(err => console.warn(err));
 
       setShowForm(false);
       setFormItemId('');
@@ -195,25 +218,18 @@ export default function ExpensesPage() {
   async function deleteExpense(id: string) {
     if (!confirm('Delete this expense?')) return;
     try {
-      // Find the expense to capture original data for the event
       const originalExpense = expenses.find(e => e.id === id);
-
       await deleteDoc(doc(db, 'expenses', id));
-
-      // Emit EXPENSE_DELETED event to ledger
       if (originalExpense) {
         const storedUser = localStorage.getItem('gtl_user');
         const actorId = storedUser ? JSON.parse(storedUser).id : 'unknown';
-        const payload: ExpenseDeletedPayload = {
+        appendEvent(tripId, 'EXPENSE_DELETED', actorId, {
           expenseId: id,
           originalAmount: Number(originalExpense.amount),
           originalPaidBy: originalExpense.paid_by,
           reason: 'User deleted',
-        };
-        appendEvent(tripId, 'EXPENSE_DELETED', actorId, payload)
-          .catch(err => console.warn('Ledger event append error:', err));
+        }).catch(err => console.warn(err));
       }
-
       loadData();
     } catch (e) {
       console.error(e);
@@ -222,381 +238,241 @@ export default function ExpensesPage() {
 
   const memberName = (id: string) => members.find(m => m.id === id)?.display_name || '?';
   const itemLabel = (id: string | null) => {
-    if (!id) return 'General';
+    if (!id) return 'General Expense';
     return items.find(i => i.id === id)?.label || 'Unknown Item';
   };
 
-  // When an item is selected, auto-fill split type from the item's default
   function handleItemChange(itemId: string) {
     setFormItemId(itemId);
     const item = items.find(i => i.id === itemId);
-    if (item) {
-      setFormSplitType(item.default_split_type);
-    }
+    if (item) setFormSplitType(item.default_split_type);
   }
 
   if (loading) {
-    return <div style={{ textAlign: 'center', padding: '3rem' }}><Loader2 size={24} className="spin" style={{ color: 'var(--color-brand-500)' }} /></div>;
+    return (
+      <div className="flex flex-col items-center justify-center py-32 gap-4">
+        <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1.5, ease: 'linear' }}>
+          <Compass size={32} style={{ color: COLORS.burgundy }} />
+        </motion.div>
+        <span className="font-bold text-sm tracking-tight opacity-70">Loading expenses…</span>
+      </div>
+    );
   }
 
+  const totalAmount = expenses.reduce((s, e) => s + Number(e.amount), 0);
+
   return (
-    <div className="exp-page">
-      <style>{`
-        .exp-page { }
-        .exp-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          margin-bottom: 1.5rem;
-        }
-        .exp-header h2 {
-          font-size: 1.25rem;
-          font-weight: 700;
-        }
-        .exp-total {
-          display: flex;
-          gap: 1.5rem;
-          margin-bottom: 1.5rem;
-          flex-wrap: wrap;
-        }
-        .exp-total-card {
-          padding: 1.25rem 1.5rem;
-          flex: 1;
-          min-width: 200px;
-        }
-        .exp-total-card .label {
-          font-size: 0.75rem;
-          font-weight: 600;
-          color: var(--color-text-muted);
-          text-transform: uppercase;
-          letter-spacing: 0.05em;
-          margin-bottom: 0.25rem;
-        }
-        .exp-total-card .value {
-          font-size: 1.5rem;
-          font-weight: 800;
-        }
-        .exp-list {
-          display: flex;
-          flex-direction: column;
-          gap: 0.5rem;
-        }
-        .exp-row {
-          display: flex;
-          align-items: center;
-          gap: 1rem;
-          padding: 1rem 1.25rem;
-        }
-        .exp-row-icon {
-          width: 36px;
-          height: 36px;
-          border-radius: 10px;
-          background: rgba(92, 124, 250, 0.1);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: var(--color-brand-400);
-          flex-shrink: 0;
-        }
-        .exp-row-body {
-          flex: 1;
-          min-width: 0;
-        }
-        .exp-row-title {
-          font-size: 0.875rem;
-          font-weight: 600;
-        }
-        .exp-row-sub {
-          font-size: 0.75rem;
-          color: var(--color-text-muted);
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          flex-wrap: wrap;
-        }
-        .exp-row-amount {
-          font-size: 1rem;
-          font-weight: 700;
-          color: var(--color-brand-400);
-          white-space: nowrap;
-        }
-        .exp-row-actions {
-          display: flex;
-          gap: 0.25rem;
-        }
-        .exp-row-actions button {
-          width: 28px;
-          height: 28px;
-          border-radius: 6px;
-          border: none;
-          background: transparent;
-          color: var(--color-text-muted);
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-        .exp-row-actions button:hover {
-          background: var(--color-surface-100);
-          color: var(--color-danger-500);
-        }
-        .receipt-thumb {
-          width: 28px;
-          height: 28px;
-          border-radius: 4px;
-          object-fit: cover;
-          cursor: pointer;
-          border: 1px solid var(--color-glass-border);
-        }
-        .modal-overlay {
-          position: fixed;
-          inset: 0;
-          background: rgba(0, 0, 0, 0.6);
-          backdrop-filter: blur(4px);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 100;
-          padding: 1.5rem;
-        }
-        .modal-card {
-          width: 100%;
-          max-width: 480px;
-          padding: 2rem;
-          max-height: 90vh;
-          overflow-y: auto;
-        }
-        .modal-card h2 {
-          font-size: 1.25rem;
-          font-weight: 700;
-          margin-bottom: 1.5rem;
-        }
-        .modal-form {
-          display: flex;
-          flex-direction: column;
-          gap: 1rem;
-        }
-        .form-group {
-          display: flex;
-          flex-direction: column;
-          gap: 0.25rem;
-        }
-        .form-group label {
-          font-size: 0.75rem;
-          font-weight: 600;
-          color: var(--color-text-secondary);
-          text-transform: uppercase;
-          letter-spacing: 0.05em;
-        }
-        .form-row {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 0.75rem;
-        }
-        .upload-area {
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
-        }
-        .upload-btn {
-          display: flex;
-          align-items: center;
-          gap: 0.375rem;
-          padding: 0.5rem 0.75rem;
-          border-radius: var(--radius-input);
-          border: 1px dashed var(--color-glass-border);
-          background: transparent;
-          color: var(--color-text-secondary);
-          font-size: 0.8125rem;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-        .upload-btn:hover {
-          border-color: var(--color-brand-500);
-          color: var(--color-brand-400);
-        }
-        .receipt-preview {
-          width: 48px;
-          height: 48px;
-          border-radius: 8px;
-          object-fit: cover;
-          border: 1px solid var(--color-glass-border);
-        }
-        .modal-actions {
-          display: flex;
-          gap: 0.75rem;
-          margin-top: 0.5rem;
-        }
-        .empty-state {
-          text-align: center;
-          padding: 3rem 2rem;
-          color: var(--color-text-secondary);
-        }
-        .participant-hint {
-          margin-top: 0.5rem;
-          padding: 0.75rem;
-          border-radius: var(--radius-input);
-          background: rgba(92, 124, 250, 0.05);
-          border: 1px solid rgba(92, 124, 250, 0.1);
-          font-size: 0.75rem;
-          color: var(--color-text-secondary);
-        }
-        .participant-hint strong {
-          color: var(--color-brand-400);
-        }
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .spin { animation: spin 0.8s linear infinite; }
-      `}</style>
-
-      <div className="exp-header">
-        <h2>💰 Expenses</h2>
-        <button className="btn-primary" onClick={() => { setShowForm(true); setFormPaidBy(currentMemberId || ''); }}>
-          <Plus size={16} /> Add Expense
-        </button>
-      </div>
-
-      <div className="exp-total">
-        <div className="exp-total-card glass-card">
-          <div className="label">Total Expenses</div>
-          <div className="value gradient-text">₹{expenses.reduce((s, e) => s + Number(e.amount), 0).toLocaleString('en-IN')}</div>
+    <div className="pb-32 font-['Inter']">
+      {/* Header */}
+      <motion.div 
+        className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-10"
+        initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
+      >
+        <div>
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full mb-3 border" style={{ backgroundColor: `${COLORS.rose}15`, borderColor: `${COLORS.rose}30`, color: COLORS.rose }}>
+            <Sparkles className="w-3.5 h-3.5" />
+            <span className="text-[10px] font-black tracking-widest uppercase">Ledger</span>
+          </div>
+          <h2 className="text-4xl font-black tracking-tighter" style={{ color: COLORS.burgundy }}>Expenses</h2>
         </div>
-        <div className="exp-total-card glass-card">
-          <div className="label">Transactions</div>
-          <div className="value">{expenses.length}</div>
-        </div>
-      </div>
+        <motion.button 
+          onClick={() => { setShowForm(true); setFormPaidBy(currentMemberId || ''); }}
+          whileHover={{ y: -2 }} whileTap={{ scale: 0.95 }}
+          className="flex items-center gap-2 px-6 py-3 rounded-full text-white font-bold shadow-xl transition-all"
+          style={{ backgroundColor: COLORS.rose }}
+        >
+          <Plus size={18} /> Add Expense
+        </motion.button>
+      </motion.div>
 
+      {/* Stats */}
+      <motion.div 
+        className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-12"
+        initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1, duration: 0.5 }}
+      >
+        <div className="p-8 rounded-[2rem] shadow-xl border bg-white" style={{ borderColor: COLORS.cream }}>
+          <div className="text-sm font-bold uppercase tracking-wider opacity-60 mb-2">Total Trip Expenses</div>
+          <div className="text-5xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-br" style={{ backgroundImage: `linear-gradient(to bottom right, ${COLORS.burgundy}, ${COLORS.rose})` }}>
+            ₹{totalAmount.toLocaleString('en-IN')}
+          </div>
+        </div>
+        <div className="p-8 rounded-[2rem] shadow-md border bg-white" style={{ borderColor: COLORS.cream }}>
+          <div className="text-sm font-bold uppercase tracking-wider opacity-60 mb-2">Total Transactions</div>
+          <div className="text-5xl font-black tracking-tighter" style={{ color: COLORS.burgundy }}>
+            {expenses.length}
+          </div>
+        </div>
+      </motion.div>
+
+      {/* List */}
       {expenses.length === 0 ? (
-        <div className="empty-state glass-card">
-          <Receipt size={40} style={{ color: 'var(--color-brand-500)', marginBottom: '0.75rem' }} />
-          <p>No expenses yet. Add expenses tied to itinerary items to start tracking.</p>
-        </div>
+        <motion.div 
+          className="py-24 text-center rounded-[2rem] border-2 border-dashed flex flex-col items-center justify-center"
+          style={{ borderColor: COLORS.cream, backgroundColor: `${COLORS.cream}30` }}
+          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
+        >
+          <div className="w-20 h-20 rounded-full flex items-center justify-center mb-6" style={{ backgroundColor: COLORS.cream }}>
+            <Receipt className="w-8 h-8 opacity-60" style={{ color: COLORS.burgundy }} />
+          </div>
+          <h3 className="text-2xl font-black mb-3">No expenses logged yet</h3>
+          <p className="text-lg opacity-70 font-medium max-w-md mx-auto">Track everything you spend to easily split costs later.</p>
+        </motion.div>
       ) : (
-        <div className="exp-list">
-          {expenses.map((exp, i) => (
-            <div key={exp.id} className="exp-row glass-card animate-in" style={{ animationDelay: `${i * 0.03}s` }}>
-              <div className="exp-row-icon">
-                <DollarSign size={18} />
+        <motion.div variants={staggerList} initial="hidden" animate="show" className="space-y-4">
+          {expenses.map((exp) => (
+            <motion.div 
+              key={exp.id} 
+              variants={listItem}
+              className="flex items-center gap-4 p-5 rounded-2xl shadow-sm hover:shadow-md transition-shadow border bg-white"
+              style={{ borderColor: COLORS.cream }}
+            >
+              <div className="w-12 h-12 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: COLORS.cream, color: COLORS.burgundy }}>
+                <DollarSign size={20} />
               </div>
-              <div className="exp-row-body">
-                <div className="exp-row-title">{exp.note || itemLabel(exp.item_id)}</div>
-                <div className="exp-row-sub">
-                  <span><User size={11} /> Paid by {memberName(exp.paid_by)}</span>
-                  <span>•</span>
-                  <span><Tag size={11} /> {itemLabel(exp.item_id)}</span>
-                  <span>•</span>
-                  <span>{SPLIT_OPTIONS.find(s => s.value === exp.split_type)?.label}</span>
+              <div className="flex-1 min-w-0">
+                <div className="text-lg font-bold truncate tracking-tight">{exp.note || itemLabel(exp.item_id)}</div>
+                <div className="flex items-center flex-wrap gap-3 mt-1 text-sm font-semibold opacity-70">
+                  <span className="flex items-center gap-1"><User size={14} /> {memberName(exp.paid_by)} paid</span>
+                  <span className="flex items-center gap-1"><Tag size={14} /> {itemLabel(exp.item_id)}</span>
+                  <span className="px-2 py-0.5 rounded-full text-xs" style={{ backgroundColor: COLORS.cream }}>
+                    {SPLIT_OPTIONS.find(s => s.value === exp.split_type)?.label}
+                  </span>
                 </div>
               </div>
-              <div className="exp-row-amount">₹{Number(exp.amount).toLocaleString('en-IN')}</div>
+              <div className="text-xl font-black font-mono tracking-tighter" style={{ color: COLORS.burgundy }}>
+                ₹{Number(exp.amount).toLocaleString('en-IN')}
+              </div>
               {exp.receipt_url && (
-                <a href={exp.receipt_url} target="_blank" rel="noopener noreferrer">
-                  <img src={exp.receipt_url} alt="Receipt" className="receipt-thumb" />
+                <a href={exp.receipt_url} target="_blank" rel="noopener noreferrer" className="ml-2 block border rounded-lg overflow-hidden hover:opacity-80 transition-opacity" style={{ borderColor: COLORS.cream }}>
+                  <img src={exp.receipt_url} alt="Receipt" className="w-10 h-10 object-cover" />
                 </a>
               )}
-              <div className="exp-row-actions">
-                <button onClick={() => deleteExpense(exp.id)} title="Delete"><Trash2 size={14} /></button>
+              <div className="ml-2">
+                <button 
+                  onClick={() => deleteExpense(exp.id)}
+                  className="p-2 rounded-xl text-red-500 hover:bg-red-50 transition-colors"
+                  title="Delete Expense"
+                >
+                  <Trash2 size={18} />
+                </button>
               </div>
-            </div>
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
       )}
 
-      {/* Add Expense Modal */}
-      {showForm && (
-        <div className="modal-overlay" onClick={() => setShowForm(false)}>
-          <div className="modal-card glass-card animate-in" onClick={e => e.stopPropagation()}>
-            <h2>💰 Add Expense</h2>
-            <form onSubmit={saveExpense} className="modal-form">
-              <div className="form-group">
-                <label>Itinerary Item</label>
-                <select className="select-field" value={formItemId} onChange={e => handleItemChange(e.target.value)}>
-                  <option value="">— General (not tied to an item) —</option>
-                  {items.map(item => {
-                    const dateStr = item.start_time
-                      ? new Date(item.start_time).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
-                      : '';
-                    const timeStr = item.start_time
-                      ? new Date(item.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                      : '';
-                    const prefix = dateStr ? `${dateStr}${timeStr ? ` ${timeStr}` : ''} • ` : '';
-                    return (
-                      <option key={item.id} value={item.id}>
-                        {prefix}{item.label} ({item.type})
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
-
-              {formItemId && participantsMap[formItemId] && (
-                <div className="participant-hint">
-                  <strong>Splitting among:</strong>{' '}
-                  {participantsMap[formItemId].map(p => memberName(p.member_id)).join(', ')}
-                </div>
-              )}
-
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Amount (₹) *</label>
-                  <input type="number" className="input-field" placeholder="0.00" step="0.01" min="0.01" value={formAmount} onChange={e => setFormAmount(e.target.value)} required />
-                </div>
-                <div className="form-group">
-                  <label>Paid By *</label>
-                  <select className="select-field" value={formPaidBy} onChange={e => setFormPaidBy(e.target.value)} required>
-                    <option value="">Select...</option>
-                    {members.map(m => (
-                      <option key={m.id} value={m.id}>{m.display_name}</option>
+      {/* Modal Form */}
+      <AnimatePresence>
+        {showForm && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+              onClick={() => setShowForm(false)}
+            />
+            <motion.div 
+              variants={modalVariants} initial="hidden" animate="visible" exit="exit"
+              className="relative w-full max-w-lg p-8 rounded-[2rem] shadow-2xl bg-white border max-h-[90vh] overflow-y-auto"
+              style={{ borderColor: COLORS.cream }}
+            >
+              <h2 className="text-3xl font-black mb-6" style={{ color: COLORS.burgundy }}>Add Expense</h2>
+              <form onSubmit={saveExpense} className="space-y-5">
+                
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider mb-2 opacity-70">Linked To</label>
+                  <select 
+                    value={formItemId} onChange={e => handleItemChange(e.target.value)}
+                    className="w-full px-5 py-4 rounded-2xl outline-none font-medium text-base shadow-inner border-2 border-transparent bg-gray-50 focus:bg-white transition-all appearance-none cursor-pointer"
+                    style={{ color: COLORS.burgundy }} onFocus={e => e.target.style.borderColor = `${COLORS.burgundy}40`} onBlur={e => e.target.style.borderColor = 'transparent'}
+                  >
+                    <option value="">— General Expense (Not tied to itinerary) —</option>
+                    {items.map(item => (
+                      <option key={item.id} value={item.id}>{item.label} ({item.type})</option>
                     ))}
                   </select>
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label>Split Type</label>
-                <select className="select-field" value={formSplitType} onChange={e => setFormSplitType(e.target.value as SplitType)}>
-                  {SPLIT_OPTIONS.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label>Note</label>
-                <input className="input-field" placeholder="What was this for?" value={formNote} onChange={e => setFormNote(e.target.value)} />
-              </div>
-
-              <div className="form-group">
-                <label>Receipt</label>
-                <div className="upload-area">
-                  <label className="upload-btn">
-                    {uploading ? <Loader2 size={14} className="spin" /> : <Upload size={14} />}
-                    {uploading ? 'Uploading...' : 'Upload Receipt'}
-                    <input type="file" accept="image/*" hidden onChange={e => {
-                      const file = e.target.files?.[0];
-                      if (file) uploadReceipt(file);
-                    }} />
-                  </label>
-                  {formReceipt && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <img src={formReceipt} alt="Receipt" className="receipt-preview" />
-                      <button type="button" onClick={() => setFormReceipt('')} style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer' }}><X size={14} /></button>
+                  {formItemId && participantsMap[formItemId] && (
+                    <div className="mt-2 text-xs font-bold px-4 py-2 rounded-xl" style={{ backgroundColor: COLORS.cream, color: COLORS.burgundy }}>
+                      Splitting among: {participantsMap[formItemId].map(p => memberName(p.member_id)).join(', ')}
                     </div>
                   )}
                 </div>
-              </div>
 
-              <div className="modal-actions">
-                <button type="submit" className="btn-primary" disabled={saving} style={{ flex: 1 }}>
-                  {saving ? <Loader2 size={16} className="spin" /> : <Check size={16} />}
-                  Add Expense
-                </button>
-                <button type="button" className="btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
-              </div>
-            </form>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider mb-2 opacity-70">Amount (₹)</label>
+                    <input 
+                      type="number" step="0.01" min="0.01" required value={formAmount} onChange={e => setFormAmount(e.target.value)}
+                      className="w-full px-5 py-4 rounded-2xl outline-none font-bold font-mono text-lg shadow-inner border-2 border-transparent bg-gray-50 focus:bg-white transition-all"
+                      style={{ color: COLORS.burgundy }} onFocus={e => e.target.style.borderColor = `${COLORS.burgundy}40`} onBlur={e => e.target.style.borderColor = 'transparent'}
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider mb-2 opacity-70">Paid By</label>
+                    <select 
+                      required value={formPaidBy} onChange={e => setFormPaidBy(e.target.value)}
+                      className="w-full px-5 py-4 rounded-2xl outline-none font-medium text-base shadow-inner border-2 border-transparent bg-gray-50 focus:bg-white transition-all appearance-none cursor-pointer"
+                      style={{ color: COLORS.burgundy }} onFocus={e => e.target.style.borderColor = `${COLORS.burgundy}40`} onBlur={e => e.target.style.borderColor = 'transparent'}
+                    >
+                      <option value="">Select...</option>
+                      {members.map(m => <option key={m.id} value={m.id}>{m.display_name}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider mb-2 opacity-70">Split Type</label>
+                  <select 
+                    value={formSplitType} onChange={e => setFormSplitType(e.target.value as SplitType)}
+                    className="w-full px-5 py-4 rounded-2xl outline-none font-medium text-base shadow-inner border-2 border-transparent bg-gray-50 focus:bg-white transition-all appearance-none cursor-pointer"
+                    style={{ color: COLORS.burgundy }} onFocus={e => e.target.style.borderColor = `${COLORS.burgundy}40`} onBlur={e => e.target.style.borderColor = 'transparent'}
+                  >
+                    {SPLIT_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider mb-2 opacity-70">Note</label>
+                  <input 
+                    type="text" value={formNote} onChange={e => setFormNote(e.target.value)}
+                    className="w-full px-5 py-4 rounded-2xl outline-none font-medium text-base shadow-inner border-2 border-transparent bg-gray-50 focus:bg-white transition-all"
+                    style={{ color: COLORS.burgundy }} onFocus={e => e.target.style.borderColor = `${COLORS.burgundy}40`} onBlur={e => e.target.style.borderColor = 'transparent'}
+                    placeholder="What was this for?"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider mb-2 opacity-70">Receipt (Optional)</label>
+                  <div className="flex items-center gap-4">
+                    <label className="flex items-center gap-2 px-5 py-3 rounded-xl border-2 border-dashed cursor-pointer hover:bg-gray-50 transition-colors" style={{ borderColor: COLORS.cream }}>
+                      {uploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5 opacity-60" />}
+                      <span className="font-bold text-sm opacity-80">Upload Image</span>
+                      <input type="file" accept="image/*" hidden onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (file) uploadReceipt(file);
+                      }} />
+                    </label>
+                    {formReceipt && (
+                      <div className="relative">
+                        <img src={formReceipt} alt="Receipt" className="w-12 h-12 rounded-xl object-cover border" style={{ borderColor: COLORS.cream }} />
+                        <button type="button" onClick={() => setFormReceipt('')} className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600 transition-colors shadow-sm"><X size={12} /></button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex gap-4 pt-4">
+                  <button type="submit" disabled={saving} className="flex-1 py-4 rounded-2xl font-bold text-white transition-transform hover:scale-[1.02] active:scale-95 disabled:opacity-70 flex items-center justify-center gap-2" style={{ backgroundColor: COLORS.burgundy }}>
+                    {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
+                    Save Expense
+                  </button>
+                  <button type="button" onClick={() => setShowForm(false)} className="px-8 py-4 rounded-2xl font-bold transition-colors hover:bg-gray-100 bg-gray-50 border">Cancel</button>
+                </div>
+              </form>
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
     </div>
   );
 }
