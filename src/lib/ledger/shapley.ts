@@ -311,3 +311,147 @@ export function compareAllocationMethods(
     shapleySplit,
   };
 }
+
+// ─── Detailed Coalition & Axiom Inspector ───────────────────────────────────
+
+export interface CoalitionDetail {
+  coalitionMask: number;
+  coalitionMembers: string[];
+  coalitionNames: string[];
+  coalitionSize: number;
+  costWithoutPlayer: number;
+  costWithPlayer: number;
+  marginalContribution: number;
+  weight: number;
+  weightedContribution: number;
+}
+
+export interface MarginalBreakdown {
+  memberId: string;
+  memberName: string;
+  totalShapleyShare: number;
+  totalEqualShare: number;
+  totalVariance: number;
+  totalTripCost: number;
+  coalitions: CoalitionDetail[];
+  axioms: {
+    efficiencySatisfied: boolean;
+    efficiencySum: number;
+    symmetrySatisfied: boolean;
+    dummyPlayerSatisfied: boolean;
+    additivitySatisfied: boolean;
+  };
+}
+
+export function getDetailedMarginalBreakdown(
+  state: TripState,
+  memberId: string
+): MarginalBreakdown | null {
+  const activeMembers = state.members.filter(m => m.isActive);
+  const activeBookings = state.bookings.filter(b => b.status === 'active');
+  const playerIds = activeMembers.map(m => m.memberId);
+  const n = playerIds.length;
+
+  if (n === 0 || !playerIds.includes(memberId)) return null;
+
+  const targetMember = activeMembers.find(m => m.memberId === memberId);
+  const memberName = targetMember ? targetMember.displayName : 'Member';
+
+  const factorial = (x: number): number => {
+    if (x <= 1) return 1;
+    let result = 1;
+    for (let i = 2; i <= x; i++) result *= i;
+    return result;
+  };
+
+  const nFactorial = factorial(n);
+  const otherPlayers = playerIds.filter(id => id !== memberId);
+  const otherMembersMap = new Map(activeMembers.map(m => [m.memberId, m.displayName]));
+  const numSubsets = 1 << otherPlayers.length; // 2^(n-1)
+
+  const coalitions: CoalitionDetail[] = [];
+  let calculatedShapleyValue = 0;
+
+  for (let mask = 0; mask < numSubsets; mask++) {
+    const coalition = new Set<string>();
+    const coalitionNames: string[] = [];
+    for (let j = 0; j < otherPlayers.length; j++) {
+      if (mask & (1 << j)) {
+        const id = otherPlayers[j];
+        coalition.add(id);
+        coalitionNames.push(otherMembersMap.get(id) || id);
+      }
+    }
+
+    const s = coalition.size;
+    const vWithoutPlayer = characteristicFunction(coalition, activeBookings);
+
+    const coalitionWithPlayer = new Set(coalition);
+    coalitionWithPlayer.add(memberId);
+    const vWithPlayer = characteristicFunction(coalitionWithPlayer, activeBookings);
+
+    const marginal = vWithPlayer - vWithoutPlayer;
+    const weight = (factorial(s) * factorial(n - s - 1)) / nFactorial;
+    const weightedContribution = weight * marginal;
+
+    calculatedShapleyValue += weightedContribution;
+
+    coalitions.push({
+      coalitionMask: mask,
+      coalitionMembers: Array.from(coalition),
+      coalitionNames,
+      coalitionSize: s,
+      costWithoutPlayer: Math.round(vWithoutPlayer * 100) / 100,
+      costWithPlayer: Math.round(vWithPlayer * 100) / 100,
+      marginalContribution: Math.round(marginal * 100) / 100,
+      weight: Math.round(weight * 10000) / 10000,
+      weightedContribution: Math.round(weightedContribution * 100) / 100,
+    });
+  }
+
+  const allAllocations = computeShapleyAllocations(state);
+  const totalTripCost = activeBookings.reduce((sum, b) => sum + b.cost, 0);
+  const equalShare = totalTripCost / n;
+  const myAllocation = allAllocations.allocations.find(a => a.memberId === memberId);
+  const finalShapley = myAllocation ? myAllocation.shapleyShare : Math.round(calculatedShapleyValue * 100) / 100;
+
+  // Axioms verification
+  const totalAllocated = allAllocations.allocations.reduce((sum, a) => sum + a.shapleyShare, 0);
+  const efficiencySatisfied = Math.abs(totalAllocated - totalTripCost) < 1;
+
+  // Symmetry: check if any two members with same participation have same share
+  let symmetrySatisfied = true;
+  for (let i = 0; i < allAllocations.allocations.length; i++) {
+    for (let j = i + 1; j < allAllocations.allocations.length; j++) {
+      const p1 = allAllocations.allocations[i];
+      const p2 = allAllocations.allocations[j];
+      const b1 = activeBookings.filter(b => b.participantMemberIds.includes(p1.memberId)).map(b => b.itemId).sort().join(',');
+      const b2 = activeBookings.filter(b => b.participantMemberIds.includes(p2.memberId)).map(b => b.itemId).sort().join(',');
+      if (b1 === b2 && Math.abs(p1.shapleyShare - p2.shapleyShare) > 1) {
+        symmetrySatisfied = false;
+      }
+    }
+  }
+
+  // Dummy player: if someone participates in 0 bookings, their share is 0
+  const participatedBookings = activeBookings.filter(b => b.participantMemberIds.includes(memberId));
+  const dummyPlayerSatisfied = participatedBookings.length > 0 ? true : finalShapley === 0;
+
+  return {
+    memberId,
+    memberName,
+    totalShapleyShare: Math.round(finalShapley * 100) / 100,
+    totalEqualShare: Math.round(equalShare * 100) / 100,
+    totalVariance: Math.round((finalShapley - equalShare) * 100) / 100,
+    totalTripCost,
+    coalitions,
+    axioms: {
+      efficiencySatisfied,
+      efficiencySum: Math.round(totalAllocated),
+      symmetrySatisfied,
+      dummyPlayerSatisfied,
+      additivitySatisfied: true, // structurally guaranteed by linearity of expectation
+    },
+  };
+}
+

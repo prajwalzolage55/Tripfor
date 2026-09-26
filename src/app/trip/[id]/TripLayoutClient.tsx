@@ -5,7 +5,7 @@ import { useParams, usePathname, useRouter } from 'next/navigation';
 import { getTrip } from '@/lib/db';
 import { useAuth } from '@/components/AuthProvider';
 import type { Trip } from '@/lib/types';
-import { Map, Receipt, Users, User, ArrowLeft, Copy, Check, History, GitFork, Scale } from 'lucide-react';
+import { Map, Receipt, Users, User, ArrowLeft, Copy, Check, History, GitFork, Scale, Network, Sparkles, ArrowRightLeft } from 'lucide-react';
 
 const NAV_ITEMS = [
   { key: 'itinerary', label: 'Itinerary', icon: Map },
@@ -13,6 +13,9 @@ const NAV_ITEMS = [
   { key: 'what-if', label: 'What-If Fork', icon: GitFork },
   { key: 'ledger', label: 'Ledger Stream', icon: History },
   { key: 'fairness', label: 'Constitution', icon: Scale },
+  { key: 'shapley', label: 'Shapley Split', icon: Sparkles },
+  { key: 'router', label: 'Settlement Router', icon: ArrowRightLeft },
+  { key: 'graph', label: 'Event Graph', icon: Network },
   { key: 'group', label: 'Group', icon: Users },
   { key: 'me', label: 'My View', icon: User },
 ];

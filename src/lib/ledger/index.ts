@@ -70,8 +70,14 @@ export {
   replayWithModifications,
 } from './replay-engine';
 
-// Dependency Graph
+// Financial Event Graph (6 Node Types)
 export type {
+  FinancialNodeType,
+  FinancialNode,
+  FinancialEdge,
+  FinancialEdgeRelation,
+  FinancialGraph,
+  CascadeChangeRequest,
   GraphNode,
   GraphEdge,
   DependencyGraph,
@@ -81,8 +87,11 @@ export type {
 } from './dependency-graph';
 
 export {
+  buildFinancialEventGraph,
+  simulateGraphCascade,
   buildDependencyGraph,
   analyzeCascade,
+  getDownstreamDependencies,
 } from './dependency-graph';
 
 // What-If Counterfactual Engine
@@ -113,11 +122,14 @@ export type {
   ShapleyAllocation,
   ShapleyBreakdown,
   ShapleyResult,
+  CoalitionDetail,
+  MarginalBreakdown,
 } from './shapley';
 
 export {
   computeShapleyAllocations,
   compareAllocationMethods,
+  getDetailedMarginalBreakdown,
 } from './shapley';
 
 // Fairness Constitution
@@ -133,3 +145,41 @@ export {
   getDefaultFairnessEngine,
   generateRuleCitation,
 } from './fairness-rules';
+
+// Settlement Router (Minimum-Transaction Graph & Debt-Netting)
+export type {
+  PaymentState,
+  PaymentStateMetadata,
+  RawDebtEdge,
+  PendingVendorRefund,
+  DisputedDebtItem,
+  OrganizerFrontedItem,
+  NonCashVoucher,
+  RoutedTransfer,
+  SettlementRoutingPlan,
+} from './settlement-router';
+
+export {
+  PAYMENT_STATE_META,
+  getPaymentStateMeta,
+  extractRawDebts,
+  extractSpecialObligations,
+  computeSettlementRouting,
+  getSection7BenchmarkScenario,
+} from './settlement-router';
+
+// Personal Impact Lens (Privacy-Scoped Visibility)
+export type {
+  CategoryConsumption,
+  ItemizedOweLine,
+  ItemizedOweBreakdown,
+  CancellationExposureItem,
+  ExpectedPersonalRefund,
+  PrivacyScopeSettings,
+  PersonalItineraryItem,
+  PersonalImpactProfile,
+} from './personal-lens';
+
+export {
+  computePersonalImpactProfile,
+} from './personal-lens';
