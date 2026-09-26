@@ -51,7 +51,7 @@ export default function PersonalImpactLensPage() {
   const [trace, setTrace] = useState<BalanceTrace[]>([]);
   const [activeTab, setActiveTab] = useState<'overview' | 'itinerary' | 'cancellations' | 'refunds'>('overview');
 
-  const [simulatedPrivacyScope, setSimulatedPrivacyScope] = useState<PrivacyScopeSettings>({
+  const [simulatedPrivacyScope, setSimulatedPrivacyScope] = useState({
     memberId: '', shareItinerary: true, shareTotalSpend: false, shareIndividualExpenses: false,
   });
 
@@ -97,8 +97,8 @@ export default function PersonalImpactLensPage() {
     }
   }, [currentMember, events]);
 
-  const togglePrivacySetting = (key: keyof PrivacyScopeSettings) => {
-    setSimulatedPrivacyScope(prev => ({ ...prev, [key]: !prev[key] }));
+  const togglePrivacySetting = (key: keyof typeof simulatedPrivacyScope) => {
+    setSimulatedPrivacyScope(prev => ({ ...prev, [key]: !prev[key as any] }));
   };
 
   const profile: PersonalImpactProfile | null = useMemo(() => {
