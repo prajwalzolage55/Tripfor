@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   getEventStream,
   replayEvents,
@@ -32,7 +33,19 @@ import {
   Check,
   HelpCircle,
   Divide,
+  Loader2,
 } from 'lucide-react';
+
+const COLORS = {
+  burgundy: '#791523',
+  cream: '#eadecd',
+  offWhite: '#fdfbfa',
+  rose: '#d05461',
+  rosePale: '#f8e8ea',
+  burgundyLight: '#9a2a3a',
+  burgundyPale: '#f5e6e9',
+  creamDark: '#c9b89e',
+};
 
 export default function ShapleyValuePage() {
   const params = useParams();
@@ -93,510 +106,472 @@ export default function ShapleyValuePage() {
     return Math.round(amt).toLocaleString('en-IN');
   };
 
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: '1rem', color: COLORS.burgundy }}>
+        <Loader2 className="animate-spin" size={36} style={{ color: COLORS.rose }} />
+        <p style={{ fontWeight: 600, fontSize: '0.875rem' }}>Computing Shapley allocations...</p>
+      </div>
+    );
+  }
+
+  const tabs = [
+    { id: 'overview', label: 'Fair Split Table', icon: Scale },
+    { id: 'inspector', label: 'Coalition Inspector', icon: Sigma },
+    { id: 'axioms', label: 'The 4 Axioms', icon: ShieldCheck },
+    { id: 'car_example', label: 'Car Example Proof', icon: Car },
+  ];
+
   return (
-    <div className="shapley-page space-y-6 max-w-6xl mx-auto pb-20">
-      {/* ─── Hero Header & Mathematical Rationale ─── */}
-      <div className="rounded-2xl p-6 bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 text-white shadow-xl border border-slate-700/80 relative overflow-hidden">
-        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+    <div style={{ maxWidth: '72rem', margin: '0 auto', paddingBottom: '5rem' }}>
+      {/* ─── Hero Header ─── */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        style={{
+          background: `linear-gradient(135deg, ${COLORS.burgundy} 0%, ${COLORS.burgundyLight} 50%, ${COLORS.rose} 100%)`,
+          borderRadius: '1.25rem',
+          padding: '2rem',
+          color: 'white',
+          position: 'relative',
+          overflow: 'hidden',
+          marginBottom: '1.5rem',
+        }}
+      >
+        <div style={{ position: 'absolute', top: 0, right: 0, width: '200px', height: '200px', background: 'radial-gradient(circle, rgba(255,255,255,0.06) 0%, transparent 70%)', borderRadius: '50%' }} />
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
           <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 text-xs font-semibold mb-3 border border-indigo-400/30">
-              <Sparkles size={14} className="text-indigo-400" />
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.25rem 0.75rem', borderRadius: '9999px', background: 'rgba(255,255,255,0.15)', fontSize: '0.7rem', fontWeight: 700, marginBottom: '0.75rem', border: '1px solid rgba(255,255,255,0.2)' }}>
+              <Sparkles size={13} />
               Section 6 · Cooperative Game Theory
             </div>
-            <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">
+            <h1 style={{ fontSize: '1.75rem', fontWeight: 900, letterSpacing: '-0.02em', lineHeight: 1.2 }}>
               Shapley-Value Cost Allocation
             </h1>
-            <p className="text-slate-300 text-xs md:text-sm mt-1.5 max-w-2xl leading-relaxed">
-              Instead of hand-coded split rules, use Shapley values from cooperative game theory —
-              the mathematically unique, axiomatically fair allocation of shared costs when
-              contributions overlap in complex ways.
+            <p style={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.8rem', marginTop: '0.5rem', maxWidth: '36rem', lineHeight: 1.6 }}>
+              The mathematically unique, axiomatically fair allocation of shared costs when contributions overlap in complex ways.
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={loadData}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs border border-slate-700 transition"
-              title="Refresh ledger state"
-            >
-              <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
-              <span>Recompute Shapley</span>
-            </button>
-          </div>
+          <button
+            onClick={loadData}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: '0.375rem', padding: '0.5rem 1rem',
+              borderRadius: '0.75rem', background: 'rgba(255,255,255,0.15)', color: 'white',
+              fontSize: '0.75rem', fontWeight: 600, border: '1px solid rgba(255,255,255,0.25)',
+              cursor: 'pointer', transition: 'all 0.2s',
+            }}
+          >
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+            Recompute
+          </button>
         </div>
 
-        {/* Callout Quote from Specification */}
-        <div className="mt-5 p-3.5 rounded-xl bg-indigo-900/50 border border-indigo-700/50 text-xs text-indigo-200 font-serif italic">
-          &ldquo;Why this matters: When a rented car is used by different subsets of people on different days, no manual split rule handles this cleanly. The Shapley formula computes each person&apos;s marginal contribution to the total cost across all possible subgroups — and allocates accordingly.&rdquo;
+        {/* Specification Quote */}
+        <div style={{ marginTop: '1.25rem', padding: '0.875rem', borderRadius: '0.75rem', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', fontSize: '0.75rem', fontStyle: 'italic', color: 'rgba(255,255,255,0.8)', fontFamily: 'Georgia, serif' }}>
+          &ldquo;When a rented car is used by different subsets of people on different days, no manual split rule handles this cleanly. The Shapley formula computes each person&apos;s marginal contribution across all possible subgroups.&rdquo;
         </div>
 
-        {/* Solver Statistics Bar */}
+        {/* Stats Bar */}
         {shapleyResult && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-5 border-t border-slate-700/60 text-xs">
-            <div className="p-2.5 rounded-xl bg-slate-800/60 border border-slate-700/60">
-              <span className="text-slate-400 text-[11px] block">Solver Method</span>
-              <span className="font-mono font-bold text-sm text-indigo-400 uppercase">
-                {shapleyResult.method} O(n·2ⁿ)
-              </span>
-            </div>
-            <div className="p-2.5 rounded-xl bg-slate-800/60 border border-slate-700/60">
-              <span className="text-slate-400 text-[11px] block">Axiomatic Fairness Score</span>
-              <span className="font-mono font-bold text-sm text-emerald-400">
-                {shapleyResult.fairnessScore}% Optimal
-              </span>
-            </div>
-            <div className="p-2.5 rounded-xl bg-slate-800/60 border border-slate-700/60">
-              <span className="text-slate-400 text-[11px] block">Total Evaluated Cost</span>
-              <span className="font-mono font-bold text-sm text-slate-100">
-                ₹{fmt(shapleyResult.totalCost)}
-              </span>
-            </div>
-            <div className="p-2.5 rounded-xl bg-slate-800/60 border border-slate-700/60">
-              <span className="text-slate-400 text-[11px] block">Efficiency Axiom</span>
-              <span className="font-semibold text-xs text-emerald-400 inline-flex items-center gap-1">
-                <CheckCircle2 size={13} />
-                Σ φᵢ = v(N) Exact
-              </span>
-            </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '1px solid rgba(255,255,255,0.15)' }}>
+            {[
+              { label: 'Solver Method', value: `${shapleyResult.method} O(n·2ⁿ)`, accent: COLORS.cream },
+              { label: 'Fairness Score', value: `${shapleyResult.fairnessScore}% Optimal`, accent: '#86efac' },
+              { label: 'Total Cost', value: `₹${fmt(shapleyResult.totalCost)}`, accent: 'white' },
+              { label: 'Efficiency Axiom', value: 'Σ φᵢ = v(N) ✓', accent: '#86efac' },
+            ].map((stat) => (
+              <div key={stat.label} style={{ padding: '0.75rem', borderRadius: '0.75rem', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <span style={{ display: 'block', fontSize: '0.625rem', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>{stat.label}</span>
+                <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: '0.8rem', color: stat.accent }}>{stat.value}</span>
+              </div>
+            ))}
           </div>
         )}
 
-        {/* Sub-Tabs Navigation */}
-        <div className="flex flex-wrap gap-2 mt-5 pt-4 border-t border-slate-800">
-          {[
-            { id: 'overview', label: '1. Shapley vs Equal Split Table', icon: Scale },
-            { id: 'inspector', label: '2. Marginal Contribution Inspector', icon: Sigma },
-            { id: 'axioms', label: '3. The 4 Game-Theoretic Axioms', icon: ShieldCheck },
-            { id: 'car_example', label: '4. Shared Car Multi-Day Proof', icon: Car },
-          ].map(tab => (
+        {/* Tab Switcher */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+          {tabs.map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition ${
-                activeTab === tab.id
-                  ? 'bg-indigo-600 text-white shadow-md'
-                  : 'bg-slate-800/80 text-slate-300 hover:bg-slate-700'
-              }`}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '0.375rem', padding: '0.5rem 0.875rem',
+                borderRadius: '0.75rem', fontSize: '0.7rem', fontWeight: 700,
+                background: activeTab === tab.id ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.1)',
+                color: activeTab === tab.id ? COLORS.burgundy : 'rgba(255,255,255,0.8)',
+                border: activeTab === tab.id ? 'none' : '1px solid rgba(255,255,255,0.15)',
+                cursor: 'pointer', transition: 'all 0.2s',
+              }}
             >
-              <tab.icon size={14} />
+              <tab.icon size={13} />
               {tab.label}
             </button>
           ))}
         </div>
-      </div>
+      </motion.div>
 
-      {/* ═════════════════════════════════════════════════════════════════════════ */}
-      {/* TAB 1: SHAPLEY VS EQUAL ALLOCATION TABLE                                  */}
-      {/* ═════════════════════════════════════════════════════════════════════════ */}
-      {activeTab === 'overview' && (
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <Scale size={18} className="text-indigo-600" />
-                Axiomatic Cost Allocation Table
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Comparing cooperative game theory marginal contributions with naive equal division.
-              </p>
+      {/* ═════ TAB 1: OVERVIEW TABLE ═════ */}
+      <AnimatePresence mode="wait">
+        {activeTab === 'overview' && (
+          <motion.div
+            key="overview"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.3 }}
+            style={{ background: 'white', borderRadius: '1rem', padding: '1.5rem', border: `1px solid ${COLORS.cream}`, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1.5rem' }}>
+              <div>
+                <h2 style={{ fontSize: '1rem', fontWeight: 800, color: COLORS.burgundy, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Scale size={18} style={{ color: COLORS.rose }} />
+                  Axiomatic Cost Allocation Table
+                </h2>
+                <p style={{ fontSize: '0.7rem', color: '#888', marginTop: '0.25rem' }}>
+                  Comparing cooperative game theory marginal contributions with naive equal division.
+                </p>
+              </div>
+              {shapleyResult && (
+                <span style={{ fontSize: '0.7rem', fontFamily: 'monospace', fontWeight: 700, padding: '0.25rem 0.75rem', borderRadius: '9999px', background: COLORS.burgundyPale, color: COLORS.burgundy, border: `1px solid ${COLORS.cream}` }}>
+                  {shapleyResult.allocations.length} Participants
+                </span>
+              )}
             </div>
 
-            {shapleyResult && (
-              <span className="text-xs font-mono font-bold px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
-                {shapleyResult.allocations.length} Active Participants
-              </span>
-            )}
-          </div>
-
-          {shapleyResult && shapleyResult.allocations.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-slate-200 text-slate-500 font-semibold uppercase text-[10px] tracking-wider">
-                    <th className="pb-3">Participant</th>
-                    <th className="pb-3 text-right">Shapley Fair Share (φᵢ)</th>
-                    <th className="pb-3 text-right">Naive Equal Split</th>
-                    <th className="pb-3 text-right">Axiomatic Variance</th>
-                    <th className="pb-3 text-right">% of Trip Gross</th>
-                    <th className="pb-3 text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium">
-                  {shapleyResult.allocations.map(alloc => (
-                    <tr key={alloc.memberId} className="hover:bg-slate-50/80 transition">
-                      <td className="py-3.5">
-                        <span className="font-bold text-slate-900 text-sm">{alloc.memberName}</span>
-                        <div className="text-[11px] text-slate-400 font-mono">
-                          Participates in {alloc.breakdown.length} bookings
-                        </div>
-                      </td>
-                      <td className="py-3.5 text-right font-mono font-bold text-sm text-indigo-600">
-                        ₹{fmt(alloc.shapleyShare)}
-                      </td>
-                      <td className="py-3.5 text-right font-mono text-slate-500">
-                        ₹{fmt(alloc.equalShare)}
-                      </td>
-                      <td className="py-3.5 text-right font-mono font-bold">
-                        {alloc.difference > 0 ? (
-                          <span className="text-amber-600 inline-flex items-center gap-1 bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200">
-                            <TrendingUp size={11} /> +₹{fmt(alloc.difference)}
-                          </span>
-                        ) : alloc.difference < 0 ? (
-                          <span className="text-emerald-600 inline-flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
-                            <TrendingDown size={11} /> -₹{fmt(Math.abs(alloc.difference))}
-                          </span>
-                        ) : (
-                          <span className="text-slate-400">₹0 (Identical)</span>
-                        )}
-                      </td>
-                      <td className="py-3.5 text-right font-mono text-slate-700">
-                        {alloc.percentageOfTotal}%
-                      </td>
-                      <td className="py-3.5 text-right">
-                        <button
-                          onClick={() => {
-                            setSelectedMemberId(alloc.memberId);
-                            setActiveTab('inspector');
-                          }}
-                          className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold transition"
-                        >
-                          Inspect φᵢ Math
-                        </button>
-                      </td>
+            {shapleyResult && shapleyResult.allocations.length > 0 ? (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', textAlign: 'left', fontSize: '0.75rem', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ borderBottom: `2px solid ${COLORS.cream}` }}>
+                      {['Participant', 'Shapley φᵢ', 'Equal Split', 'Variance', '% of Total', 'Action'].map(h => (
+                        <th key={h} style={{ padding: '0.75rem 0.5rem', color: COLORS.burgundy, fontWeight: 700, fontSize: '0.625rem', textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: h === 'Participant' ? 'left' : 'right' }}>{h}</th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {shapleyResult.allocations.map((alloc, idx) => (
+                      <tr key={alloc.memberId} style={{ borderBottom: `1px solid ${COLORS.cream}40`, transition: 'background 0.2s' }} onMouseEnter={e => (e.currentTarget.style.background = COLORS.burgundyPale + '40')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                        <td style={{ padding: '1rem 0.5rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            <div style={{ width: '2rem', height: '2rem', borderRadius: '50%', background: `linear-gradient(135deg, ${COLORS.burgundy}, ${COLORS.rose})`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: '0.75rem', flexShrink: 0 }}>
+                              {alloc.memberName.charAt(0)}
+                            </div>
+                            <div>
+                              <span style={{ fontWeight: 700, color: COLORS.burgundy, fontSize: '0.8rem' }}>{alloc.memberName}</span>
+                              <div style={{ fontSize: '0.625rem', color: '#999', fontFamily: 'monospace' }}>
+                                {alloc.breakdown.length} bookings
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td style={{ padding: '1rem 0.5rem', textAlign: 'right', fontFamily: 'monospace', fontWeight: 800, fontSize: '0.85rem', color: COLORS.burgundy }}>
+                          ₹{fmt(alloc.shapleyShare)}
+                        </td>
+                        <td style={{ padding: '1rem 0.5rem', textAlign: 'right', fontFamily: 'monospace', color: '#888' }}>
+                          ₹{fmt(alloc.equalShare)}
+                        </td>
+                        <td style={{ padding: '1rem 0.5rem', textAlign: 'right' }}>
+                          {alloc.difference > 0 ? (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', padding: '0.2rem 0.5rem', borderRadius: '0.5rem', background: '#fef3c7', color: '#92400e', fontFamily: 'monospace', fontWeight: 700, fontSize: '0.7rem', border: '1px solid #fde68a' }}>
+                              <TrendingUp size={11} /> +₹{fmt(alloc.difference)}
+                            </span>
+                          ) : alloc.difference < 0 ? (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', padding: '0.2rem 0.5rem', borderRadius: '0.5rem', background: '#dcfce7', color: '#166534', fontFamily: 'monospace', fontWeight: 700, fontSize: '0.7rem', border: '1px solid #bbf7d0' }}>
+                              <TrendingDown size={11} /> -₹{fmt(Math.abs(alloc.difference))}
+                            </span>
+                          ) : (
+                            <span style={{ color: '#999', fontSize: '0.7rem' }}>₹0</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '1rem 0.5rem', textAlign: 'right', fontFamily: 'monospace', fontWeight: 600, color: COLORS.burgundy }}>
+                          {alloc.percentageOfTotal}%
+                        </td>
+                        <td style={{ padding: '1rem 0.5rem', textAlign: 'right' }}>
+                          <button
+                            onClick={() => { setSelectedMemberId(alloc.memberId); setActiveTab('inspector'); }}
+                            style={{
+                              padding: '0.35rem 0.75rem', borderRadius: '0.5rem',
+                              background: COLORS.burgundyPale, color: COLORS.burgundy,
+                              fontSize: '0.7rem', fontWeight: 700, border: `1px solid ${COLORS.cream}`,
+                              cursor: 'pointer', transition: 'all 0.2s',
+                            }}
+                          >
+                            Inspect φᵢ
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div style={{ padding: '3rem', textAlign: 'center', color: '#999', fontSize: '0.8rem' }}>
+                <Scale size={36} style={{ color: COLORS.cream, marginBottom: '0.75rem' }} />
+                <p>No active bookings found to compute Shapley values.</p>
+              </div>
+            )}
+
+            {/* Game-Theoretic Guarantee Footer */}
+            <div style={{ marginTop: '1.5rem', padding: '1rem', borderRadius: '0.75rem', background: COLORS.burgundyPale + '40', border: `1px solid ${COLORS.cream}`, fontSize: '0.75rem', color: COLORS.burgundy, lineHeight: 1.7 }}>
+              <strong>Game-Theoretic Guarantee:</strong> The Shapley value is provably the <strong>only</strong> allocation satisfying Efficiency, Symmetry, Dummy Player, and Additivity axioms simultaneously.
             </div>
-          ) : (
-            <div className="p-8 text-center text-slate-500 text-xs">
-              No active itinerary bookings found to compute Shapley values.
-            </div>
-          )}
+          </motion.div>
+        )}
 
-          {/* Mathematical Guarantee Callout */}
-          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 space-y-1.5">
-            <strong className="text-slate-900 block">Game-Theoretic Guarantee:</strong>
-            <p className="leading-relaxed">
-              When travelers join excursions selectively or leave mid-trip, a naive equal split forces non-participating travelers to subsidize activities they never attended.
-              The Shapley value is provably the <strong>only</strong> allocation formula satisfying the four axioms of fairness:
-              <em>Efficiency</em>, <em>Symmetry</em>, <em>Dummy Player</em>, and <em>Additivity</em>.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* ═════════════════════════════════════════════════════════════════════════ */}
-      {/* TAB 2: MARGINAL CONTRIBUTION COALITION INSPECTOR                          */}
-      {/* ═════════════════════════════════════════════════════════════════════════ */}
-      {activeTab === 'inspector' && (
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-            <div>
-              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <Sigma size={18} className="text-indigo-600" />
-                Coalitional Marginal Contribution Inspector
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Inspect how every coalition permutation contributes to a specific traveler&apos;s fair share.
-              </p>
-            </div>
-
-            {/* Member Selector */}
-            <div className="flex items-center gap-2">
-              <label className="text-xs font-bold text-slate-700 shrink-0">Select Traveler:</label>
-              <select
-                value={selectedMemberId}
-                onChange={e => setSelectedMemberId(e.target.value)}
-                className="px-3 py-1.5 rounded-xl border border-slate-300 font-bold text-xs text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                {state?.members.map(m => (
-                  <option key={m.memberId} value={m.memberId}>
-                    {m.displayName}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {marginalBreakdown && (
-            <div className="space-y-6">
-              {/* Traveler Summary Bar */}
-              <div className="p-4 rounded-xl bg-indigo-50/80 border border-indigo-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                <div>
-                  <span className="text-indigo-600 text-[11px] font-bold uppercase tracking-wider block">
-                    Shapley Valuation for
-                  </span>
-                  <span className="text-lg font-black text-slate-900">
-                    {marginalBreakdown.memberName}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-4 text-xs font-mono">
-                  <div>
-                    <span className="text-slate-500 block text-[10px]">Shapley Fair Share</span>
-                    <span className="font-extrabold text-indigo-700 text-sm">
-                      ₹{fmt(marginalBreakdown.totalShapleyShare)}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500 block text-[10px]">Naive Share</span>
-                    <span className="text-slate-600">
-                      ₹{fmt(marginalBreakdown.totalEqualShare)}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500 block text-[10px]">Variance</span>
-                    <span className={marginalBreakdown.totalVariance >= 0 ? 'text-amber-600 font-bold' : 'text-emerald-600 font-bold'}>
-                      {marginalBreakdown.totalVariance >= 0 ? '+' : ''}₹{fmt(marginalBreakdown.totalVariance)}
-                    </span>
-                  </div>
-                </div>
+        {/* ═════ TAB 2: COALITION INSPECTOR ═════ */}
+        {activeTab === 'inspector' && (
+          <motion.div
+            key="inspector"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.3 }}
+            style={{ background: 'white', borderRadius: '1rem', padding: '1.5rem', border: `1px solid ${COLORS.cream}`, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', paddingBottom: '1rem', borderBottom: `1px solid ${COLORS.cream}40`, marginBottom: '1.5rem' }}>
+              <div>
+                <h2 style={{ fontSize: '1rem', fontWeight: 800, color: COLORS.burgundy, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Sigma size={18} style={{ color: COLORS.rose }} />
+                  Marginal Contribution Inspector
+                </h2>
+                <p style={{ fontSize: '0.7rem', color: '#888', marginTop: '0.25rem' }}>
+                  Inspect how every coalition permutation contributes to a traveler&apos;s fair share.
+                </p>
               </div>
 
-              {/* Combinatorial Table */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <label style={{ fontSize: '0.7rem', fontWeight: 700, color: COLORS.burgundy }}>Traveler:</label>
+                <select
+                  value={selectedMemberId}
+                  onChange={e => setSelectedMemberId(e.target.value)}
+                  style={{
+                    padding: '0.4rem 0.75rem', borderRadius: '0.75rem', border: `1.5px solid ${COLORS.cream}`,
+                    fontWeight: 700, fontSize: '0.75rem', color: COLORS.burgundy, background: 'white',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {state?.members.map(m => (
+                    <option key={m.memberId} value={m.memberId}>{m.displayName}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {marginalBreakdown && (
               <div>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 mb-3">
-                  All Evaluated Coalitions S ⊆ N \ &#123;{marginalBreakdown.memberName}&#125; ({marginalBreakdown.coalitions.length} Subsets)
+                {/* Summary Card */}
+                <div style={{ padding: '1.25rem', borderRadius: '1rem', background: `linear-gradient(135deg, ${COLORS.burgundyPale}60, ${COLORS.rosePale}40)`, border: `1px solid ${COLORS.cream}`, marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                  <div>
+                    <span style={{ fontSize: '0.625rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: COLORS.rose }}>Shapley Valuation for</span>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 900, color: COLORS.burgundy }}>{marginalBreakdown.memberName}</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '1.5rem', fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                    <div>
+                      <span style={{ display: 'block', fontSize: '0.6rem', color: '#888' }}>Fair Share</span>
+                      <span style={{ fontWeight: 800, color: COLORS.burgundy, fontSize: '0.9rem' }}>₹{fmt(marginalBreakdown.totalShapleyShare)}</span>
+                    </div>
+                    <div>
+                      <span style={{ display: 'block', fontSize: '0.6rem', color: '#888' }}>Naive</span>
+                      <span style={{ color: '#666' }}>₹{fmt(marginalBreakdown.totalEqualShare)}</span>
+                    </div>
+                    <div>
+                      <span style={{ display: 'block', fontSize: '0.6rem', color: '#888' }}>Variance</span>
+                      <span style={{ fontWeight: 700, color: marginalBreakdown.totalVariance >= 0 ? '#92400e' : '#166534' }}>
+                        {marginalBreakdown.totalVariance >= 0 ? '+' : ''}₹{fmt(marginalBreakdown.totalVariance)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Coalition Table */}
+                <h3 style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: COLORS.burgundy, marginBottom: '0.75rem' }}>
+                  All Coalitions S ⊆ N \ &#123;{marginalBreakdown.memberName}&#125; ({marginalBreakdown.coalitions.length} Subsets)
                 </h3>
 
-                <div className="overflow-x-auto max-h-96 rounded-xl border border-slate-200">
-                  <table className="w-full text-left text-xs">
-                    <thead className="sticky top-0 bg-slate-100 text-slate-600 font-semibold uppercase text-[10px] tracking-wider border-b border-slate-200">
-                      <tr>
-                        <th className="p-2.5">Coalition S</th>
-                        <th className="p-2.5 text-center">|S|</th>
-                        <th className="p-2.5 text-right">v(S) Without</th>
-                        <th className="p-2.5 text-right">v(S ∪ &#123;i&#125;) With</th>
-                        <th className="p-2.5 text-right font-bold text-slate-900">Marginal Δ</th>
-                        <th className="p-2.5 text-right">Weight |S|!(n-|S|-1)!/n!</th>
-                        <th className="p-2.5 text-right text-indigo-700 font-bold">Weighted Share</th>
+                <div style={{ overflowX: 'auto', maxHeight: '24rem', borderRadius: '0.75rem', border: `1px solid ${COLORS.cream}` }}>
+                  <table style={{ width: '100%', textAlign: 'left', fontSize: '0.7rem', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: COLORS.burgundyPale + '40', position: 'sticky', top: 0 }}>
+                        {['Coalition S', '|S|', 'v(S)', 'v(S∪{i})', 'Marginal Δ', 'Weight', 'Weighted φ'].map((h, i) => (
+                          <th key={h} style={{ padding: '0.625rem', fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: COLORS.burgundy, textAlign: i === 0 ? 'left' : 'right', borderBottom: `2px solid ${COLORS.cream}` }}>{h}</th>
+                        ))}
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
+                    <tbody>
                       {marginalBreakdown.coalitions.map((c, idx) => (
-                        <tr key={idx} className="hover:bg-indigo-50/30 transition">
-                          <td className="p-2.5 font-sans font-semibold text-slate-800">
+                        <tr key={idx} style={{ borderBottom: `1px solid ${COLORS.cream}30`, transition: 'background 0.15s' }} onMouseEnter={e => (e.currentTarget.style.background = COLORS.burgundyPale + '20')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                          <td style={{ padding: '0.625rem', fontWeight: 600, color: COLORS.burgundy }}>
                             {c.coalitionNames.length > 0 ? (
-                              <span className="inline-flex flex-wrap gap-1">
+                              <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: '0.25rem' }}>
                                 {c.coalitionNames.map((name, i) => (
-                                  <span key={i} className="px-1.5 py-0.2 rounded bg-slate-200/80 text-[10px]">
-                                    {name}
-                                  </span>
+                                  <span key={i} style={{ padding: '0.1rem 0.4rem', borderRadius: '0.25rem', background: COLORS.cream + '60', fontSize: '0.625rem' }}>{name}</span>
                                 ))}
                               </span>
                             ) : (
-                              <span className="text-slate-400 italic font-normal">∅ (Empty Coalition)</span>
+                              <span style={{ color: '#999', fontStyle: 'italic', fontWeight: 400 }}>∅ Empty</span>
                             )}
                           </td>
-                          <td className="p-2.5 text-center text-slate-500">
-                            {c.coalitionSize}
-                          </td>
-                          <td className="p-2.5 text-right text-slate-500">
-                            ₹{fmt(c.costWithoutPlayer)}
-                          </td>
-                          <td className="p-2.5 text-right text-slate-700">
-                            ₹{fmt(c.costWithPlayer)}
-                          </td>
-                          <td className="p-2.5 text-right font-bold text-slate-900">
-                            ₹{fmt(c.marginalContribution)}
-                          </td>
-                          <td className="p-2.5 text-right text-slate-500">
-                            {c.weight}
-                          </td>
-                          <td className="p-2.5 text-right font-bold text-indigo-700">
-                            ₹{fmt(c.weightedContribution)}
-                          </td>
+                          <td style={{ padding: '0.625rem', textAlign: 'right', fontFamily: 'monospace', color: '#888' }}>{c.coalitionSize}</td>
+                          <td style={{ padding: '0.625rem', textAlign: 'right', fontFamily: 'monospace', color: '#888' }}>₹{fmt(c.costWithoutPlayer)}</td>
+                          <td style={{ padding: '0.625rem', textAlign: 'right', fontFamily: 'monospace', color: COLORS.burgundy }}>₹{fmt(c.costWithPlayer)}</td>
+                          <td style={{ padding: '0.625rem', textAlign: 'right', fontFamily: 'monospace', fontWeight: 800, color: COLORS.burgundy }}>₹{fmt(c.marginalContribution)}</td>
+                          <td style={{ padding: '0.625rem', textAlign: 'right', fontFamily: 'monospace', color: '#888' }}>{c.weight}</td>
+                          <td style={{ padding: '0.625rem', textAlign: 'right', fontFamily: 'monospace', fontWeight: 800, color: COLORS.rose }}>₹{fmt(c.weightedContribution)}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
 
-                <div className="mt-3 p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 flex items-center justify-between">
-                  <span>
-                    Mathematical Sum: Σ [Weight × Marginal] = <strong>₹{fmt(marginalBreakdown.totalShapleyShare)}</strong>
-                  </span>
-                  <span className="font-semibold text-indigo-600">
-                    Exact Fair Share Verified ✓
+                <div style={{ marginTop: '0.75rem', padding: '0.75rem', borderRadius: '0.75rem', background: COLORS.burgundyPale + '30', border: `1px solid ${COLORS.cream}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: COLORS.burgundy }}>
+                  <span>Σ [Weight × Marginal] = <strong>₹{fmt(marginalBreakdown.totalShapleyShare)}</strong></span>
+                  <span style={{ fontWeight: 700, color: COLORS.rose, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <CheckCircle2 size={14} /> Verified
                   </span>
                 </div>
               </div>
-            </div>
-          )}
-        </div>
-      )}
+            )}
+          </motion.div>
+        )}
 
-      {/* ═════════════════════════════════════════════════════════════════════════ */}
-      {/* TAB 3: THE 4 GAME-THEORETIC AXIOMS VERIFIER                               */}
-      {/* ═════════════════════════════════════════════════════════════════════════ */}
-      {activeTab === 'axioms' && (
-        <div className="space-y-4">
-          <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-6">
-            <div>
-              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <ShieldCheck size={18} className="text-indigo-600" />
-                The Four Mathematical Axioms of Shapley Fairness
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Lloyd Shapley proved in 1953 that this is the ONE AND ONLY cost allocation method satisfying these four axioms simultaneously.
-              </p>
-            </div>
+        {/* ═════ TAB 3: AXIOMS ═════ */}
+        {activeTab === 'axioms' && (
+          <motion.div
+            key="axioms"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.3 }}
+            style={{ background: 'white', borderRadius: '1rem', padding: '1.5rem', border: `1px solid ${COLORS.cream}`, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}
+          >
+            <h2 style={{ fontSize: '1rem', fontWeight: 800, color: COLORS.burgundy, display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+              <ShieldCheck size={18} style={{ color: COLORS.rose }} />
+              The Four Axioms of Shapley Fairness
+            </h2>
+            <p style={{ fontSize: '0.7rem', color: '#888', marginBottom: '1.5rem' }}>
+              Lloyd Shapley proved in 1953 that this is the only allocation satisfying these four axioms simultaneously.
+            </p>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Axiom 1: Efficiency */}
-              <div className="p-5 rounded-2xl border border-slate-200 bg-slate-50 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">
-                    Axiom 1 · Efficiency
-                  </span>
-                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
-                    <CheckCircle2 size={12} /> Satisfied
-                  </span>
-                </div>
-                <h3 className="font-bold text-sm text-slate-900">Σ φᵢ(v) = v(N)</h3>
-                <p className="text-xs text-slate-600 leading-relaxed">
-                  The sum of all participants&apos; Shapley values exactly equals the total cost of all trip bookings.
-                  No rupee is unallocated, and no participant pays excess phantom expenses.
-                </p>
-                {shapleyResult && (
-                  <div className="p-2.5 rounded-lg bg-white border border-slate-200 text-[11px] font-mono text-slate-700">
-                    Total Gross: ₹{fmt(shapleyResult.totalCost)} = Sum of φ: ₹{fmt(shapleyResult.allocations.reduce((s, a) => s + a.shapleyShare, 0))}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
+              {[
+                {
+                  num: 1, name: 'Efficiency', formula: 'Σ φᵢ(v) = v(N)',
+                  desc: 'The sum of all Shapley values exactly equals total trip cost. No rupee is left unallocated.',
+                  proof: shapleyResult ? `Total: ₹${fmt(shapleyResult.totalCost)} = Σφ: ₹${fmt(shapleyResult.allocations.reduce((s, a) => s + a.shapleyShare, 0))}` : 'Load data to verify',
+                },
+                {
+                  num: 2, name: 'Symmetry', formula: 'v(S∪{i}) = v(S∪{j}) ⇒ φᵢ = φⱼ',
+                  desc: 'If two travelers attend identical bookings and contribute equally to every coalition, their fair shares are guaranteed equal.',
+                  proof: 'Equal participation → identical liabilities.',
+                },
+                {
+                  num: 3, name: 'Dummy Player', formula: 'v(S∪{i}) = v(S) ⇒ φᵢ = 0',
+                  desc: 'If a participant does not use or add cost to an activity, their marginal contribution is zero. Never billed for unused services.',
+                  proof: 'Opt-out activities contribute ₹0.',
+                },
+                {
+                  num: 4, name: 'Additivity', formula: 'φ(u + w) = φ(u) + φ(w)',
+                  desc: 'If the trip is split into sub-games (Flight + Villa + Dinner), the fair share of the combined trip equals the sum of individual fair shares.',
+                  proof: 'Total decomposes into item-level shares.',
+                },
+              ].map(axiom => (
+                <div
+                  key={axiom.num}
+                  style={{
+                    padding: '1.25rem', borderRadius: '1rem',
+                    border: `1px solid ${COLORS.cream}`, background: COLORS.burgundyPale + '20',
+                    transition: 'transform 0.2s, box-shadow 0.2s',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <span style={{ fontSize: '0.625rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: COLORS.rose }}>
+                      Axiom {axiom.num} · {axiom.name}
+                    </span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', fontSize: '0.625rem', fontWeight: 700, color: '#166534', background: '#dcfce7', padding: '0.15rem 0.5rem', borderRadius: '0.5rem', border: '1px solid #bbf7d0' }}>
+                      <CheckCircle2 size={11} /> Satisfied
+                    </span>
                   </div>
-                )}
-              </div>
+                  <h3 style={{ fontWeight: 800, fontSize: '0.85rem', color: COLORS.burgundy, fontFamily: 'monospace', marginBottom: '0.5rem' }}>{axiom.formula}</h3>
+                  <p style={{ fontSize: '0.7rem', color: '#666', lineHeight: 1.6, marginBottom: '0.75rem' }}>{axiom.desc}</p>
+                  <div style={{ padding: '0.5rem 0.75rem', borderRadius: '0.5rem', background: 'white', border: `1px solid ${COLORS.cream}`, fontSize: '0.65rem', fontFamily: 'monospace', color: COLORS.burgundy }}>
+                    {axiom.proof}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
 
-              {/* Axiom 2: Symmetry */}
-              <div className="p-5 rounded-2xl border border-slate-200 bg-slate-50 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">
-                    Axiom 2 · Symmetry
-                  </span>
-                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
-                    <CheckCircle2 size={12} /> Satisfied
-                  </span>
-                </div>
-                <h3 className="font-bold text-sm text-slate-900">v(S ∪ &#123;i&#125;) = v(S ∪ &#123;j&#125;) ⇒ φᵢ = φⱼ</h3>
-                <p className="text-xs text-slate-600 leading-relaxed">
-                  If two travelers attend the identical set of bookings and contribute equally to every coalition,
-                  their allocated fair shares are mathematically guaranteed to be equal. No favoritism.
-                </p>
-                <div className="p-2.5 rounded-lg bg-white border border-slate-200 text-[11px] font-mono text-slate-700">
-                  Equal participation produces identical rupee liabilities.
-                </div>
-              </div>
-
-              {/* Axiom 3: Dummy / Null Player */}
-              <div className="p-5 rounded-2xl border border-slate-200 bg-slate-50 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">
-                    Axiom 3 · Dummy Player
-                  </span>
-                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
-                    <CheckCircle2 size={12} /> Satisfied
-                  </span>
-                </div>
-                <h3 className="font-bold text-sm text-slate-900">v(S ∪ &#123;i&#125;) = v(S) ⇒ φᵢ = 0</h3>
-                <p className="text-xs text-slate-600 leading-relaxed">
-                  If a participant does not use or add cost to an excursion (e.g. they opted out of safari or joined the trip late),
-                  their marginal contribution is zero. They are never billed for unused services.
-                </p>
-                <div className="p-2.5 rounded-lg bg-white border border-slate-200 text-[11px] font-mono text-slate-700">
-                  Opt-out activities contribute ₹0 to non-attendees.
-                </div>
-              </div>
-
-              {/* Axiom 4: Additivity */}
-              <div className="p-5 rounded-2xl border border-slate-200 bg-slate-50 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">
-                    Axiom 4 · Additivity
-                  </span>
-                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
-                    <CheckCircle2 size={12} /> Satisfied
-                  </span>
-                </div>
-                <h3 className="font-bold text-sm text-slate-900">φ(u + w) = φ(u) + φ(w)</h3>
-                <p className="text-xs text-slate-600 leading-relaxed">
-                  If the trip is split into separate sub-games (e.g. Flight booking + Villa suite + Dinner),
-                  the fair share of the combined trip is the exact sum of fair shares for the individual parts.
-                </p>
-                <div className="p-2.5 rounded-lg bg-white border border-slate-200 text-[11px] font-mono text-slate-700">
-                  Total fair share decomposes cleanly into item-level shares.
-                </div>
+        {/* ═════ TAB 4: CAR EXAMPLE ═════ */}
+        {activeTab === 'car_example' && (
+          <motion.div
+            key="car"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.3 }}
+            style={{ background: 'white', borderRadius: '1rem', padding: '1.5rem', border: `1px solid ${COLORS.cream}`, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem' }}>
+              <Car size={20} style={{ color: COLORS.rose }} />
+              <div>
+                <h2 style={{ fontSize: '1rem', fontWeight: 800, color: COLORS.burgundy }}>Multi-Day Rented Car Scenario</h2>
+                <p style={{ fontSize: '0.7rem', color: '#888', marginTop: '0.125rem' }}>Why standard expense splitters fail and how Shapley solves overlapping usage.</p>
               </div>
             </div>
-          </div>
-        </div>
-      )}
 
-      {/* ═════════════════════════════════════════════════════════════════════════ */}
-      {/* TAB 4: SHARED CAR MULTI-DAY EXAMPLE PROOF                                 */}
-      {/* ═════════════════════════════════════════════════════════════════════════ */}
-      {activeTab === 'car_example' && (
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-6">
-          <div className="flex items-center gap-2">
-            <Car size={20} className="text-indigo-600" />
-            <div>
-              <h2 className="text-base font-bold text-slate-900">
-                Specification Concrete Scenario: Multi-Day Rented Car
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Why standard expense splitters fail and how Shapley values solve overlapping usage structurally.
+            {/* Scenario Card */}
+            <div style={{
+              padding: '1.5rem', borderRadius: '1rem',
+              background: `linear-gradient(135deg, ${COLORS.burgundy}, ${COLORS.burgundyLight})`,
+              color: 'white', marginBottom: '1.25rem',
+            }}>
+              <h3 style={{ fontWeight: 700, fontSize: '0.85rem', color: COLORS.cream, marginBottom: '0.5rem' }}>The Conflict Scenario</h3>
+              <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.7)', marginBottom: '1rem' }}>
+                SUV rented for ₹9,000 for 3 days (₹3,000/day):
               </p>
-            </div>
-          </div>
 
-          <div className="p-5 rounded-2xl bg-indigo-950 text-white space-y-4 border border-indigo-900 shadow-lg">
-            <h3 className="font-bold text-sm text-indigo-300">The Conflict Scenario</h3>
-            <p className="text-xs text-indigo-100 leading-relaxed">
-              Suppose a self-drive SUV is rented for ₹9,000 for 3 days (₹3,000/day):
-            </p>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-              <div className="p-3 rounded-xl bg-indigo-900/60 border border-indigo-700/50">
-                <span className="text-indigo-300 font-bold block">Day 1 (₹3,000)</span>
-                <span className="text-slate-200">Used by: Aisha &amp; Rahul</span>
-              </div>
-              <div className="p-3 rounded-xl bg-indigo-900/60 border border-indigo-700/50">
-                <span className="text-indigo-300 font-bold block">Day 2 (₹3,000)</span>
-                <span className="text-slate-200">Used by: Rahul &amp; Priya</span>
-              </div>
-              <div className="p-3 rounded-xl bg-indigo-900/60 border border-indigo-700/50">
-                <span className="text-indigo-300 font-bold block">Day 3 (₹3,000)</span>
-                <span className="text-slate-200">Used by: Aisha, Rahul &amp; Priya</span>
-              </div>
-            </div>
-
-            <div className="pt-3 border-t border-indigo-900 grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-              <div className="p-3 rounded-xl bg-rose-950/60 border border-rose-800/60">
-                <span className="font-bold text-rose-300 block mb-1">❌ Naive Equal Split Failure</span>
-                <p className="text-rose-100/90 text-[11px] leading-relaxed">
-                  ₹9,000 ÷ 3 = ₹3,000 each.
-                  Aisha and Priya object because Rahul used the car all 3 days, whereas they each only used it for 2 days!
-                </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                {[
+                  { day: 'Day 1 (₹3,000)', users: 'Aisha & Rahul' },
+                  { day: 'Day 2 (₹3,000)', users: 'Rahul & Priya' },
+                  { day: 'Day 3 (₹3,000)', users: 'Aisha, Rahul & Priya' },
+                ].map(d => (
+                  <div key={d.day} style={{ padding: '0.75rem', borderRadius: '0.75rem', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)' }}>
+                    <span style={{ fontWeight: 700, color: COLORS.cream, display: 'block', fontSize: '0.75rem' }}>{d.day}</span>
+                    <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.7rem' }}>{d.users}</span>
+                  </div>
+                ))}
               </div>
 
-              <div className="p-3 rounded-xl bg-emerald-950/60 border border-emerald-800/60">
-                <span className="font-bold text-emerald-300 block mb-1">✓ Shapley Mathematical Solution</span>
-                <p className="text-emerald-100/90 text-[11px] leading-relaxed">
-                  Day 1: Aisha ₹1,500, Rahul ₹1,500.<br />
-                  Day 2: Rahul ₹1,500, Priya ₹1,500.<br />
-                  Day 3: Aisha ₹1,000, Rahul ₹1,000, Priya ₹1,000.<br />
-                  <strong>Result: Rahul ₹4,000 · Aisha ₹2,500 · Priya ₹2,500</strong>
-                </p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                <div style={{ padding: '0.875rem', borderRadius: '0.75rem', background: 'rgba(255,80,80,0.15)', border: '1px solid rgba(255,80,80,0.25)' }}>
+                  <span style={{ fontWeight: 700, color: '#fca5a5', display: 'block', marginBottom: '0.375rem', fontSize: '0.75rem' }}>❌ Naive Equal Split</span>
+                  <p style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.7)', lineHeight: 1.6 }}>
+                    ₹9,000 ÷ 3 = ₹3,000 each. Aisha and Priya object — Rahul used the car all 3 days!
+                  </p>
+                </div>
+                <div style={{ padding: '0.875rem', borderRadius: '0.75rem', background: 'rgba(80,255,120,0.1)', border: '1px solid rgba(80,255,120,0.2)' }}>
+                  <span style={{ fontWeight: 700, color: '#86efac', display: 'block', marginBottom: '0.375rem', fontSize: '0.75rem' }}>✓ Shapley Solution</span>
+                  <p style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.7)', lineHeight: 1.6 }}>
+                    Day 1: Aisha ₹1,500, Rahul ₹1,500.<br />
+                    Day 2: Rahul ₹1,500, Priya ₹1,500.<br />
+                    Day 3: Each ₹1,000.<br />
+                    <strong style={{ color: 'white' }}>Rahul ₹4,000 · Aisha ₹2,500 · Priya ₹2,500</strong>
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 space-y-1">
-            <strong className="text-slate-900">Key Takeaway:</strong>
-            <p className="leading-relaxed">
-              Every edge case where people join or leave activities mid-trip is handled structurally by computing marginal contributions across coalitions — without writing brittle if/else branches.
-            </p>
-          </div>
-        </div>
-      )}
+            <div style={{ padding: '1rem', borderRadius: '0.75rem', background: COLORS.burgundyPale + '30', border: `1px solid ${COLORS.cream}`, fontSize: '0.75rem', color: COLORS.burgundy, lineHeight: 1.7 }}>
+              <strong>Key Takeaway:</strong> Every edge case where people join or leave activities mid-trip is handled structurally — no brittle if/else branches needed.
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
