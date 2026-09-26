@@ -142,8 +142,8 @@ export default function ItineraryPage() {
       const prefsRes = await getDocs(prefsQ);
       if (!prefsRes.empty) setPreferences({ id: prefsRes.docs[0].id, ...prefsRes.docs[0].data() } as unknown as TripPreferences);
       
-      const daysQ = query(collection(db, 'itinerary_days'), where('trip_id', '==', tripId), orderBy('day_index', 'asc'));
-      const itemsQ = query(collection(db, 'itinerary_items'), where('trip_id', '==', tripId), orderBy('start_time', 'asc'));
+      const daysQ = query(collection(db, 'itinerary_days'), where('trip_id', '==', tripId));
+      const itemsQ = query(collection(db, 'itinerary_items'), where('trip_id', '==', tripId));
       const memQ = query(collection(db, 'trip_members'), where('trip_id', '==', tripId));
       const locQ = query(collection(db, 'locations')); // Load all locations for now, or just the ones needed
 
@@ -154,8 +154,12 @@ export default function ItineraryPage() {
         getDocs(locQ),
       ]);
 
-      const loadedDays = daysRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as ItineraryDayRecord));
-      let loadedItems = itemsRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as ItineraryItem));
+      const loadedDays = daysRes.docs
+        .map(d => ({ id: d.id, ...d.data() } as unknown as ItineraryDayRecord))
+        .sort((a, b) => (a.day_index ?? 0) - (b.day_index ?? 0));
+      let loadedItems = itemsRes.docs
+        .map(d => ({ id: d.id, ...d.data() } as unknown as ItineraryItem))
+        .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
       const loadedMembers = membersRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as TripMember));
       
       const locMap: Record<string, any> = {};

@@ -43,7 +43,7 @@ export default function ExpensesPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const expQ = query(collection(db, 'expenses'), where('trip_id', '==', tripId), orderBy('created_at', 'desc'));
+      const expQ = query(collection(db, 'expenses'), where('trip_id', '==', tripId));
       const itemQ = query(collection(db, 'itinerary_items'), where('trip_id', '==', tripId), where('status', '==', 'active'));
       const memQ = query(collection(db, 'trip_members'), where('trip_id', '==', tripId));
 
@@ -53,7 +53,9 @@ export default function ExpensesPage() {
         getDocs(memQ),
       ]);
 
-      const loadedExpenses = expRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as Expense));
+      const loadedExpenses = expRes.docs
+        .map(d => ({ id: d.id, ...d.data() } as unknown as Expense))
+        .sort((a, b) => new Date(b.created_at || '').getTime() - new Date(a.created_at || '').getTime());
       const loadedItems = itemRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as ItineraryItem));
       const loadedMembers = memRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as TripMember));
 
