@@ -11,16 +11,24 @@ export async function getTrips(userId: string) {
   const q = query(membersRef, where('user_id', '==', userId));
   const memberDocs = await getDocs(q);
   
-  const tripIds = memberDocs.docs.map(d => d.data().trip_id);
+  const tripIds = Array.from(new Set(memberDocs.docs.map(d => d.data().trip_id).filter(Boolean)));
   
   if (tripIds.length === 0) return [];
 
-  // Query trips in batches of 10 if necessary, for now assume < 10
+  // Firestore supports max 30 items in 'in' queries
   const tripsRef = collection(db, 'trips');
-  const tripQ = query(tripsRef, where('id', 'in', tripIds));
-  const tripDocs = await getDocs(tripQ);
+  const chunks: string[][] = [];
+  for (let i = 0; i < tripIds.length; i += 30) {
+    chunks.push(tripIds.slice(i, i + 30));
+  }
+
+  const trips: Trip[] = [];
+  for (const chunk of chunks) {
+    const tripQ = query(tripsRef, where('id', 'in', chunk));
+    const tripDocs = await getDocs(tripQ);
+    trips.push(...tripDocs.docs.map(d => ({ id: d.id, ...d.data() } as Trip)));
+  }
   
-  const trips = tripDocs.docs.map(d => ({ id: d.id, ...d.data() } as Trip));
   return trips.sort((a, b) => new Date(b.created_at || '').getTime() - new Date(a.created_at || '').getTime());
 }
 

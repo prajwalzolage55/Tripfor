@@ -40,52 +40,56 @@ export default function ExpensesPage() {
   const [saving, setSaving] = useState(false);
 
   const loadData = useCallback(async () => {
-    const expQ = query(collection(db, 'expenses'), where('trip_id', '==', tripId), orderBy('created_at', 'desc'));
-    const itemQ = query(collection(db, 'itinerary_items'), where('trip_id', '==', tripId), where('status', '==', 'active'));
-    const memQ = query(collection(db, 'trip_members'), where('trip_id', '==', tripId));
+    try {
+      const expQ = query(collection(db, 'expenses'), where('trip_id', '==', tripId), orderBy('created_at', 'desc'));
+      const itemQ = query(collection(db, 'itinerary_items'), where('trip_id', '==', tripId), where('status', '==', 'active'));
+      const memQ = query(collection(db, 'trip_members'), where('trip_id', '==', tripId));
 
-    const [expRes, itemRes, memRes] = await Promise.all([
-      getDocs(expQ),
-      getDocs(itemQ),
-      getDocs(memQ),
-    ]);
+      const [expRes, itemRes, memRes] = await Promise.all([
+        getDocs(expQ),
+        getDocs(itemQ),
+        getDocs(memQ),
+      ]);
 
-    const loadedExpenses = expRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as Expense));
-    const loadedItems = itemRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as ItineraryItem));
-    const loadedMembers = memRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as TripMember));
+      const loadedExpenses = expRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as Expense));
+      const loadedItems = itemRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as ItineraryItem));
+      const loadedMembers = memRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as TripMember));
 
-    setExpenses(loadedExpenses);
-    setItems(loadedItems);
-    setMembers(loadedMembers);
+      setExpenses(loadedExpenses);
+      setItems(loadedItems);
+      setMembers(loadedMembers);
 
-    // Set current member using localStorage auth
-    const storedUser = localStorage.getItem('gtl_user');
-    if (storedUser && loadedMembers.length > 0) {
-      const parsed = JSON.parse(storedUser);
-      const me = loadedMembers.find(m => m.user_id === parsed.id);
-      if (me) {
-        setCurrentMemberId(me.id);
-        if (!formPaidBy) setFormPaidBy(me.id);
-      }
-    }
-
-    // Load participants for all items
-    if (loadedItems.length > 0) {
-      const partsQ = query(collection(db, 'item_participants'));
-      const partsRes = await getDocs(partsQ);
-      const parts = partsRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as ItemParticipant));
-      const activeIds = new Set(loadedItems.map(i => i.id));
-      const map: Record<string, ItemParticipant[]> = {};
-      parts.forEach(p => {
-        if (activeIds.has(p.item_id)) {
-          if (!map[p.item_id]) map[p.item_id] = [];
-          map[p.item_id].push(p);
+      // Set current member using localStorage auth
+      const storedUser = localStorage.getItem('gtl_user');
+      if (storedUser && loadedMembers.length > 0) {
+        const parsed = JSON.parse(storedUser);
+        const me = loadedMembers.find(m => m.user_id === parsed.id);
+        if (me) {
+          setCurrentMemberId(me.id);
+          if (!formPaidBy) setFormPaidBy(me.id);
         }
-      });
-      setParticipantsMap(map);
-    }
+      }
 
-    setLoading(false);
+      // Load participants for all items
+      if (loadedItems.length > 0) {
+        const partsQ = query(collection(db, 'item_participants'));
+        const partsRes = await getDocs(partsQ);
+        const parts = partsRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as ItemParticipant));
+        const activeIds = new Set(loadedItems.map(i => i.id));
+        const map: Record<string, ItemParticipant[]> = {};
+        parts.forEach(p => {
+          if (activeIds.has(p.item_id)) {
+            if (!map[p.item_id]) map[p.item_id] = [];
+            map[p.item_id].push(p);
+          }
+        });
+        setParticipantsMap(map);
+      }
+    } catch (err) {
+      console.error('Failed to load expenses page data:', err);
+    } finally {
+      setLoading(false);
+    }
   }, [tripId]);
 
   useEffect(() => {

@@ -32,8 +32,12 @@ export default function TripLayout({ children }: { children: React.ReactNode }) 
       return;
     }
     async function load() {
-      const data = await getTrip(tripId);
-      if (data) setTrip(data);
+      try {
+        const data = await getTrip(tripId);
+        if (data) setTrip(data);
+      } catch (err) {
+        console.error('Failed to load trip:', err);
+      }
     }
     load();
   }, [tripId, router, authUser, authLoading]);

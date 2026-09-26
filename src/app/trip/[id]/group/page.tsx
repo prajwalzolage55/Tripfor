@@ -32,130 +32,138 @@ export default function GroupPage() {
   const [memberSpendData, setMemberSpendData] = useState<{ name: string; paid: number; owes: number }[]>([]);
 
   const loadData = useCallback(async () => {
-    const memQ = query(collection(db, 'trip_members'), where('trip_id', '==', tripId));
-    const expQ = query(collection(db, 'expenses'), where('trip_id', '==', tripId));
-    const itemQ = query(collection(db, 'itinerary_items'), where('trip_id', '==', tripId));
+    try {
+      const memQ = query(collection(db, 'trip_members'), where('trip_id', '==', tripId));
+      const expQ = query(collection(db, 'expenses'), where('trip_id', '==', tripId));
+      const itemQ = query(collection(db, 'itinerary_items'), where('trip_id', '==', tripId));
 
-    const [memRes, expRes, itemRes] = await Promise.all([
-      getDocs(memQ),
-      getDocs(expQ),
-      getDocs(itemQ),
-    ]);
+      const [memRes, expRes, itemRes] = await Promise.all([
+        getDocs(memQ),
+        getDocs(expQ),
+        getDocs(itemQ),
+      ]);
 
-    const loadedMembers = memRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as TripMember));
-    const loadedExpenses = expRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as Expense));
-    const loadedItems = itemRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as ItineraryItem));
+      const loadedMembers = memRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as TripMember));
+      const loadedExpenses = expRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as Expense));
+      const loadedItems = itemRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as ItineraryItem));
 
-    setMembers(loadedMembers);
-    setExpenses(loadedExpenses);
-    setItems(loadedItems);
+      setMembers(loadedMembers);
+      setExpenses(loadedExpenses);
+      setItems(loadedItems);
 
-    // Get cancelled item IDs
-    const cancelledIds = new Set(loadedItems.filter(i => i.status === 'cancelled').map(i => i.id));
+      // Get cancelled item IDs
+      const cancelledIds = new Set(loadedItems.filter(i => i.status === 'cancelled').map(i => i.id));
 
-    // Load all item_participants
-    const partsQ = query(collection(db, 'item_participants'));
-    const partsRes = await getDocs(partsQ);
-    const allPartsRaw = partsRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as ItemParticipant));
-    const activeItemIds = new Set(loadedItems.filter(i => i.status === 'active').map(i => i.id));
-    const allParts = allPartsRaw.filter(p => activeItemIds.has(p.item_id));
+      // Load all item_participants
+      const partsQ = query(collection(db, 'item_participants'));
+      const partsRes = await getDocs(partsQ);
+      const allPartsRaw = partsRes.docs.map(d => ({ id: d.id, ...d.data() } as unknown as ItemParticipant));
+      const activeItemIds = new Set(loadedItems.filter(i => i.status === 'active').map(i => i.id));
+      const allParts = allPartsRaw.filter(p => activeItemIds.has(p.item_id));
 
-    // Build participant map
-    const partMap: Record<string, ItemParticipant[]> = {};
-    allParts.forEach(p => {
-      if (!partMap[p.item_id]) partMap[p.item_id] = [];
-      partMap[p.item_id].push(p);
-    });
-
-    // Build raw expenses for the engine
-    const memberIds = loadedMembers.map(m => m.id);
-    const rawExpenses: RawExpense[] = loadedExpenses.map(exp => {
-      const participants = exp.item_id && partMap[exp.item_id]
-        ? partMap[exp.item_id].map(p => ({ memberId: p.member_id, percentage: p.percentage ?? undefined }))
-        : memberIds.map(id => ({ memberId: id })); // General expense: split among all
-      return {
-        id: exp.id,
-        amount: Number(exp.amount),
-        paidBy: exp.paid_by,
-        splitType: exp.split_type as SplitType,
-        itemId: exp.item_id,
-        participants,
-      };
-    });
-
-    // Run calculation engine
-    const result = computeSettlements(rawExpenses, memberIds, cancelledIds);
-    setBalances(result.balances);
-    setSettlements(result.settlements);
-
-    // Load existing settlement statuses from DB
-    const settleQ = query(collection(db, 'settlements'), where('trip_id', '==', tripId));
-    const settleRes = await getDocs(settleQ);
-    const existingSettlements = settleRes.docs.map(d => ({ id: d.id, ...d.data() } as Record<string, any>));
-    
-    const statusMap: Record<string, 'pending' | 'paid'> = {};
-    existingSettlements.forEach(s => {
-      const key = `${s.from_member}-${s.to_member}`;
-      statusMap[key] = s.status as 'pending' | 'paid';
-    });
-    setSettlementStatuses(statusMap);
-
-    // Save settlements to DB (regenerate snapshot)
-    for (const oldSettle of settleRes.docs) {
-      await deleteDoc(oldSettle.ref);
-    }
-    
-    if (result.settlements.length > 0) {
-      const promises = result.settlements.map(s => {
-        const key = `${s.from}-${s.to}`;
-        const sRef = doc(collection(db, 'settlements'));
-        return setDoc(sRef, {
-          id: sRef.id,
-          trip_id: tripId,
-          from_member: s.from,
-          to_member: s.to,
-          amount: s.amount,
-          status: statusMap[key] || 'pending',
-          upi_link: generateUPILink(
-            loadedMembers.find(m => m.id === s.to)?.display_name || '',
-            s.amount
-          ),
-        });
+      // Build participant map
+      const partMap: Record<string, ItemParticipant[]> = {};
+      allParts.forEach(p => {
+        if (!partMap[p.item_id]) partMap[p.item_id] = [];
+        partMap[p.item_id].push(p);
       });
-      await Promise.all(promises);
+
+      // Build raw expenses for the engine
+      const memberIds = loadedMembers.map(m => m.id);
+      const rawExpenses: RawExpense[] = loadedExpenses.map(exp => {
+        const participants = exp.item_id && partMap[exp.item_id]
+          ? partMap[exp.item_id].map(p => ({ memberId: p.member_id, percentage: p.percentage ?? undefined }))
+          : memberIds.map(id => ({ memberId: id })); // General expense: split among all
+        return {
+          id: exp.id,
+          amount: Number(exp.amount),
+          paidBy: exp.paid_by,
+          splitType: exp.split_type as SplitType,
+          itemId: exp.item_id,
+          participants,
+        };
+      });
+
+      // Run calculation engine
+      const result = computeSettlements(rawExpenses, memberIds, cancelledIds);
+      setBalances(result.balances);
+      setSettlements(result.settlements);
+
+      // Load existing settlement statuses from DB
+      const settleQ = query(collection(db, 'settlements'), where('trip_id', '==', tripId));
+      const settleRes = await getDocs(settleQ);
+      const existingSettlements = settleRes.docs.map(d => ({ id: d.id, ...d.data() } as Record<string, any>));
+      
+      const statusMap: Record<string, 'pending' | 'paid'> = {};
+      existingSettlements.forEach(s => {
+        const key = `${s.from_member}-${s.to_member}`;
+        statusMap[key] = s.status as 'pending' | 'paid';
+      });
+      setSettlementStatuses(statusMap);
+
+      // Save settlements to DB (regenerate snapshot)
+      try {
+        for (const oldSettle of settleRes.docs) {
+          await deleteDoc(oldSettle.ref);
+        }
+        
+        if (result.settlements.length > 0) {
+          const promises = result.settlements.map(s => {
+            const key = `${s.from}-${s.to}`;
+            const sRef = doc(collection(db, 'settlements'));
+            return setDoc(sRef, {
+              id: sRef.id,
+              trip_id: tripId,
+              from_member: s.from,
+              to_member: s.to,
+              amount: s.amount,
+              status: statusMap[key] || 'pending',
+              upi_link: generateUPILink(
+                loadedMembers.find(m => m.id === s.to)?.display_name || '',
+                s.amount
+              ),
+            });
+          });
+          await Promise.all(promises);
+        }
+      } catch (dbErr) {
+        console.warn('Could not sync settlements to Firestore:', dbErr);
+      }
+
+      // Build category chart data
+      const catMap: Record<string, number> = {};
+      loadedExpenses.forEach(exp => {
+        if (exp.item_id && cancelledIds.has(exp.item_id)) return;
+        const item = loadedItems.find(i => i.id === exp.item_id);
+        const cat = item?.type || 'other';
+        catMap[cat] = (catMap[cat] || 0) + Number(exp.amount);
+      });
+      setCategoryData(Object.entries(catMap).map(([name, value]) => ({ name: name.charAt(0).toUpperCase() + name.slice(1), value })));
+
+      // Build member spend data
+      const memberPaid: Record<string, number> = {};
+      const memberOwes: Record<string, number> = {};
+      loadedMembers.forEach(m => {
+        memberPaid[m.id] = 0;
+        memberOwes[m.id] = 0;
+      });
+      loadedExpenses.forEach(exp => {
+        if (exp.item_id && cancelledIds.has(exp.item_id)) return;
+        memberPaid[exp.paid_by] = (memberPaid[exp.paid_by] || 0) + Number(exp.amount);
+      });
+      Object.entries(result.balances).forEach(([id, bal]) => {
+        if (bal < 0) memberOwes[id] = Math.abs(bal);
+      });
+      setMemberSpendData(loadedMembers.map(m => ({
+        name: m.display_name,
+        paid: memberPaid[m.id] || 0,
+        owes: memberOwes[m.id] || 0,
+      })));
+    } catch (err) {
+      console.error('Failed to load group page data:', err);
+    } finally {
+      setLoading(false);
     }
-
-    // Build category chart data
-    const catMap: Record<string, number> = {};
-    loadedExpenses.forEach(exp => {
-      if (exp.item_id && cancelledIds.has(exp.item_id)) return;
-      const item = loadedItems.find(i => i.id === exp.item_id);
-      const cat = item?.type || 'other';
-      catMap[cat] = (catMap[cat] || 0) + Number(exp.amount);
-    });
-    setCategoryData(Object.entries(catMap).map(([name, value]) => ({ name: name.charAt(0).toUpperCase() + name.slice(1), value })));
-
-    // Build member spend data
-    const memberPaid: Record<string, number> = {};
-    const memberOwes: Record<string, number> = {};
-    loadedMembers.forEach(m => {
-      memberPaid[m.id] = 0;
-      memberOwes[m.id] = 0;
-    });
-    loadedExpenses.forEach(exp => {
-      if (exp.item_id && cancelledIds.has(exp.item_id)) return;
-      memberPaid[exp.paid_by] = (memberPaid[exp.paid_by] || 0) + Number(exp.amount);
-    });
-    Object.entries(result.balances).forEach(([id, bal]) => {
-      if (bal < 0) memberOwes[id] = Math.abs(bal);
-    });
-    setMemberSpendData(loadedMembers.map(m => ({
-      name: m.display_name,
-      paid: memberPaid[m.id] || 0,
-      owes: memberOwes[m.id] || 0,
-    })));
-
-    setLoading(false);
   }, [tripId]);
 
   useEffect(() => {
