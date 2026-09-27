@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { useTripId } from '@/lib/trip-routing';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, doc, writeBatch, deleteDoc } from 'firebase/firestore';
 import { useAuth } from '@/components/AuthProvider';
@@ -46,8 +46,7 @@ import {
 } from 'lucide-react';
 
 export default function TripLedgerPage() {
-  const params = useParams();
-  const tripId = params?.id as string;
+  const tripId = useTripId();
   const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);

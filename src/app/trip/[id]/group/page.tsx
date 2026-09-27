@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { useTripId } from '@/lib/trip-routing';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, setDoc, doc, deleteDoc } from 'firebase/firestore';
 import { computeSettlements, type RawExpense } from '@/lib/engine';
@@ -18,8 +18,7 @@ import {
 const CHART_COLORS = ['#5c7cfa', '#fab005', '#40c057', '#fa5252', '#c084fc', '#f59f00', '#4ecdc4', '#ff6b6b'];
 
 export default function GroupPage() {
-  const params = useParams();
-  const tripId = params.id as string;
+  const tripId = useTripId();
 
   const [loading, setLoading] = useState(true);
   const [members, setMembers] = useState<TripMember[]>([]);

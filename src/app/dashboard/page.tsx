@@ -12,6 +12,7 @@ import {
   Loader2, Users, Compass, ArrowRight, Sparkles, Map, User
 } from 'lucide-react';
 import Link from 'next/link';
+import { getTripPath } from '@/lib/trip-routing';
 
 const COLORS = {
   burgundy: '#791523',
@@ -101,7 +102,7 @@ export default function DashboardPage() {
         end_date: endDate || null
       }, authUser.id, displayName || authUser.display_name || authUser.email?.split('@')[0] || 'Organizer');
       
-      router.push(`/trip/${trip.id}/itinerary`);
+      router.push(getTripPath(trip.id, 'itinerary'));
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -117,7 +118,7 @@ export default function DashboardPage() {
 
     try {
       const tripId = await joinTripByCode(inviteCode.trim(), authUser.id, joinName);
-      router.push(`/trip/${tripId}/itinerary`);
+      router.push(getTripPath(tripId, 'itinerary'));
     } catch (err: any) {
       setJoinError(err.message);
     } finally {
@@ -242,7 +243,7 @@ export default function DashboardPage() {
                   key={trip.id}
                   variants={fadeUp}
                   whileHover={{ y: -8, scale: 1.02 }}
-                  onClick={() => router.push(`/trip/${trip.id}/itinerary`)}
+                  onClick={() => router.push(getTripPath(trip.id, 'itinerary'))}
                   className="group relative cursor-pointer p-8 rounded-[2rem] shadow-lg hover:shadow-2xl transition-all duration-300 border bg-white"
                   style={{ borderColor: COLORS.cream }}
                 >

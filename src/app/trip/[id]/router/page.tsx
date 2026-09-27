@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { useTripId } from '@/lib/trip-routing';
 import { useAuth } from '@/components/AuthProvider';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -36,8 +36,7 @@ const COLORS = {
 };
 
 export default function SettlementRouterPage() {
-  const params = useParams();
-  const tripId = params?.id as string;
+  const tripId = useTripId();
   const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);

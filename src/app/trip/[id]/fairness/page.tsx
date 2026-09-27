@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import { useParams } from 'next/navigation';
+import { useTripId } from '@/lib/trip-routing';
 import { useAuth } from '@/components/AuthProvider';
 import {
   getEventStream,
@@ -44,8 +44,7 @@ import {
 } from 'lucide-react';
 
 export default function FairnessConstitutionPage() {
-  const params = useParams();
-  const tripId = params?.id as string;
+  const tripId = useTripId();
   const { user } = useAuth();
 
   // Navigation tabs

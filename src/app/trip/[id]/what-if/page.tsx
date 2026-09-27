@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState, useMemo, useCallback } from 'react';
-import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { useTripId, getTripPath } from '@/lib/trip-routing';
 import { useAuth } from '@/components/AuthProvider';
 import {
   getEventStream,
@@ -47,8 +47,7 @@ import {
 } from 'lucide-react';
 
 export default function WhatIfPage() {
-  const params = useParams();
-  const tripId = params?.id as string;
+  const tripId = useTripId();
   const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);
@@ -376,7 +375,7 @@ export default function WhatIfPage() {
 
           <div className="flex items-center gap-2">
             <Link
-              href={`/trip/${tripId}/ledger`}
+              href={getTripPath(tripId, 'ledger')}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md transition"
             >
               <span>Ledger Stream</span>
@@ -420,7 +419,7 @@ export default function WhatIfPage() {
             <p className="text-xs sm:text-sm font-semibold">{forkSuccess}</p>
           </div>
           <Link
-            href={`/trip/${tripId}/ledger`}
+            href={getTripPath(tripId, 'ledger')}
             className="text-xs font-bold text-emerald-700 hover:underline shrink-0 flex items-center gap-1"
           >
             Audit in Ledger <ArrowRight size={12} />

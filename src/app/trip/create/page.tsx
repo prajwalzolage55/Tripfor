@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { createTrip, saveTripPreferences } from '@/lib/db';
 import { generateTripItinerary, createEmptyTripDays } from '@/lib/generate';
+import { getTripPath } from '@/lib/trip-routing';
 import { ChevronRight, ChevronLeft, Loader2, Plane, MapPin, Calendar, Users, IndianRupee, Activity, Navigation, Coffee, Home, Sparkles, Plus } from 'lucide-react';
 
 const TRAVEL_STYLES = ['Budget', 'Relaxed', 'Balanced', 'Packed', 'Luxury'];
@@ -79,7 +80,7 @@ export default function CreateTripWizard() {
       }
 
       // Finish & Redirect to generated dashboard
-      router.push(`/trip/${trip.id}/itinerary`);
+      router.push(getTripPath(trip.id, 'itinerary'));
     } catch (err: any) {
       alert('Error creating trip: ' + err.message);
       setLoading(false);

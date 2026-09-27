@@ -10,6 +10,8 @@ import { ReactLenis } from 'lenis/react';
 import { Map, Receipt, Users, User, ArrowLeft, Copy, Check, History, GitFork, Scale, Network, Sparkles, ArrowRightLeft } from 'lucide-react';
 import Link from 'next/link';
 
+import { useTripId, getTripPath } from '@/lib/trip-routing';
+
 const COLORS = {
   burgundy: '#791523',
   cream: '#eadecd',
@@ -31,10 +33,9 @@ const NAV_ITEMS = [
 ];
 
 export default function TripLayoutClient({ children }: { children: React.ReactNode }) {
-  const params = useParams();
   const pathname = usePathname();
   const router = useRouter();
-  const tripId = params?.id as string;
+  const tripId = useTripId();
   const [trip, setTrip] = useState<Trip | null>(null);
   const [copied, setCopied] = useState(false);
   const { user: authUser, loading: authLoading } = useAuth();
@@ -47,7 +48,7 @@ export default function TripLayoutClient({ children }: { children: React.ReactNo
       router.replace('/login');
       return;
     }
-    if (!tripId || tripId === 'view') return;
+    if (!tripId) return;
     async function load() {
       try {
         const data = await getTrip(tripId);
@@ -110,7 +111,7 @@ export default function TripLayoutClient({ children }: { children: React.ReactNo
               return (
                 <button
                   key={item.key}
-                  onClick={() => router.push(`/trip/${tripId}/${item.key}`)}
+                  onClick={() => router.push(getTripPath(tripId, item.key))}
                   className={`relative flex items-center gap-2 px-5 py-4 text-sm font-bold whitespace-nowrap transition-colors`}
                   style={{ color: isActive ? COLORS.burgundy : `${COLORS.burgundy}80` }}
                 >

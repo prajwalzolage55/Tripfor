@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
+import { useTripId } from '@/lib/trip-routing';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDoc, getDocs, doc, setDoc, deleteDoc, orderBy } from 'firebase/firestore';
 import type {
@@ -83,9 +84,8 @@ const SPLIT_OPTIONS: { value: SplitType; label: string }[] = [
 ];
 
 export default function ItineraryPage() {
-  const params = useParams();
   const router = useRouter();
-  const tripId = params.id as string;
+  const tripId = useTripId();
 
   const [trip, setTrip] = useState<Trip | null>(null);
   const [preferences, setPreferences] = useState<TripPreferences | null>(null);

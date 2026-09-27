@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { useTripId } from '@/lib/trip-routing';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { useAuth } from '@/components/AuthProvider';
@@ -57,8 +57,7 @@ const modalVariants: Variants = {
 
 export default function ExpensesPage() {
   const { user: authUser } = useAuth();
-  const params = useParams();
-  const tripId = params.id as string;
+  const tripId = useTripId();
 
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [items, setItems] = useState<ItineraryItem[]>([]);

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import { useParams } from 'next/navigation';
+import { useTripId } from '@/lib/trip-routing';
 import { useAuth } from '@/components/AuthProvider';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -64,8 +64,7 @@ const NODE_CONFIGS: Record<FinancialNodeType, { icon: typeof Users; label: strin
 };
 
 export default function FinancialEventGraphPage() {
-  const params = useParams();
-  const tripId = params?.id as string;
+  const tripId = useTripId();
   const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);
