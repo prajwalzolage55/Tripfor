@@ -6,11 +6,15 @@ if (!process.env.NODE_OPTIONS?.includes('--no-experimental-webstorage')) {
   process.env.NODE_OPTIONS = `${process.env.NODE_OPTIONS || ''} --no-experimental-webstorage`.trim();
 }
 
+const isVercel = Boolean(process.env.VERCEL);
 const isProd = process.env.NODE_ENV === 'production';
 
+// On Vercel, run in standard dynamic Next.js mode so that dynamic routes like /trip/[id]/itinerary work seamlessly without 404s.
+// On mobile/Capacitor builds (Appflow or local), output static export into 'out'.
+const isStaticExport = !isVercel && (isProd || Boolean(process.env.CAPACITOR_BUILD));
+
 const nextConfig = {
-  // Only apply static export during production build, enabling full dynamic routing during 'npm run dev'
-  output: isProd ? 'export' : undefined,
+  output: isStaticExport ? 'export' : undefined,
   images: {
     unoptimized: true,
   },
