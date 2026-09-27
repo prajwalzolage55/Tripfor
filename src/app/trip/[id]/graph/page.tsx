@@ -47,7 +47,7 @@ const COLORS = {
   burgundy: '#791523',
   cream: '#eadecd',
   offWhite: '#fdfbfa',
-  rose: '#d05461',
+  rose: '#b83a4b',
   rosePale: '#f8e8ea',
   burgundyLight: '#9a2a3a',
   burgundyPale: '#f5e6e9',
@@ -167,7 +167,7 @@ export default function FinancialEventGraphPage() {
           borderRadius: '1.25rem', padding: '2rem', color: 'white', position: 'relative', overflow: 'hidden', marginBottom: '1.5rem',
         }}
       >
-        <div style={{ position: 'absolute', top: '-50px', right: '-50px', width: '250px', height: '250px', background: 'radial-gradient(circle, rgba(208,84,97,0.2) 0%, transparent 70%)', borderRadius: '50%' }} />
+        <div style={{ position: 'absolute', top: '-50px', right: '-50px', width: '250px', height: '250px', background: 'radial-gradient(circle, rgba(184,58,75,0.25) 0%, transparent 70%)', borderRadius: '50%' }} />
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
           <div>

@@ -40,7 +40,7 @@ const COLORS = {
   burgundy: '#791523',
   cream: '#eadecd',
   offWhite: '#fdfbfa',
-  rose: '#d05461',
+  rose: '#b83a4b',
   rosePale: '#f8e8ea',
   burgundyLight: '#9a2a3a',
   burgundyPale: '#f5e6e9',

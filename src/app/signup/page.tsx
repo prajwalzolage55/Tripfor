@@ -15,7 +15,7 @@ const COLORS = {
   burgundy: '#791523',
   cream: '#eadecd',
   offWhite: '#fdfbfa',
-  rose: '#d05461'
+  rose: '#b83a4b'
 };
 
 const staggerContainer: Variants = {
@@ -92,7 +92,7 @@ export default function SignupPage() {
         avatar_url: userProfile.avatar_url,
       });
 
-      router.push('/dashboard');
+      router.push('/hub');
     } catch (err: any) {
       setError(err.message || 'An error occurred during signup.');
     } finally {
@@ -127,13 +127,13 @@ export default function SignupPage() {
               <div className="w-10 h-10 rounded-full flex items-center justify-center bg-white/20 backdrop-blur-md">
                 <Plane className="w-5 h-5 text-white" />
               </div>
-              <span className="text-2xl font-black tracking-tight">Tripfor</span>
+              <span className="text-2xl font-black tracking-tight">TriFork</span>
             </div>
             <h1 className="text-5xl font-black tracking-tighter leading-[1.1] mb-6">
               Create an account & start packing.
             </h1>
             <p className="text-lg font-medium opacity-90 leading-relaxed">
-              Join thousands of travelers using Tripfor to organize their itineraries and automatically split expenses without the headache.
+              Join thousands of travelers using TriFork to organize their itineraries and automatically split expenses without the headache.
             </p>
           </motion.div>
         </div>
@@ -152,7 +152,7 @@ export default function SignupPage() {
             animate="show"
           >
             <motion.div variants={itemAnim} className="mb-8 text-center lg:text-left">
-              <h2 className="text-4xl font-black tracking-tight mb-3">Join Tripfor</h2>
+              <h2 className="text-4xl font-black tracking-tight mb-3">Join TriFork</h2>
               <p className="text-base font-medium opacity-70">
                 Setup your account in seconds.
               </p>

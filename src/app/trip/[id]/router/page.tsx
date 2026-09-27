@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 
 const COLORS = {
-  burgundy: '#791523', cream: '#eadecd', offWhite: '#fdfbfa', rose: '#d05461',
+  burgundy: '#791523', cream: '#eadecd', offWhite: '#fdfbfa', rose: '#b83a4b',
   rosePale: '#f8e8ea', burgundyLight: '#9a2a3a', burgundyPale: '#f5e6e9', creamDark: '#c9b89e',
 };
 

@@ -427,3 +427,32 @@
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-8px); }
 }
+
+/* ── Cesium 3D Globe Zero-Overlap Rules ── */
+.cesium-viewer {
+  width: 100% !important;
+  height: 100% !important;
+  overflow: hidden !important;
+  position: absolute !important;
+  inset: 0 !important;
+}
+
+.cesium-widget,
+.cesium-widget canvas {
+  width: 100% !important;
+  height: 100% !important;
+  touch-action: none !important;
+  outline: none !important;
+}
+
+/* Hide default Cesium widget chrome that overlaps custom app UI */
+.cesium-viewer-bottom,
+.cesium-widget-credits,
+.cesium-credit-logoContainer,
+.cesium-credit-textContainer,
+.cesium-infoBox,
+.cesium-selection-wrapper,
+.cesium-viewer-toolbar {
+  display: none !important;
+}
+

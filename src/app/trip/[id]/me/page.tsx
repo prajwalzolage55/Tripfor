@@ -11,10 +11,11 @@ import {
   type BalanceTrace,
   type LedgerEvent,
   type TripState,
+  type DerivedMember,
   computePersonalImpactProfile,
   type PersonalImpactProfile,
+  type PrivacyScopeSettings,
 } from '@/lib/ledger';
-import type { TripMember } from '@/lib/types';
 import {
   User, DollarSign, ArrowRight, ArrowDown, ArrowUp, Loader2, CheckCircle2, Clock,
   ExternalLink, Plane, Hotel, Activity, Car, UtensilsCrossed, MoreHorizontal,
@@ -24,7 +25,7 @@ import {
 } from 'lucide-react';
 
 const COLORS = {
-  burgundy: '#791523', cream: '#eadecd', offWhite: '#fdfbfa', rose: '#d05461',
+  burgundy: '#791523', cream: '#eadecd', offWhite: '#fdfbfa', rose: '#b83a4b',
   rosePale: '#f8e8ea', burgundyLight: '#9a2a3a', burgundyPale: '#f5e6e9', creamDark: '#c9b89e',
 };
 
@@ -44,14 +45,20 @@ export default function PersonalImpactLensPage() {
   const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);
-  const [currentMember, setCurrentMember] = useState<any>(null);
+  const [currentMember, setCurrentMember] = useState<DerivedMember | null>(null);
   const [events, setEvents] = useState<LedgerEvent[]>([]);
   const [state, setState] = useState<TripState | null>(null);
   const [trace, setTrace] = useState<BalanceTrace[]>([]);
   const [activeTab, setActiveTab] = useState<'overview' | 'itinerary' | 'cancellations' | 'refunds'>('overview');
 
-  const [simulatedPrivacyScope, setSimulatedPrivacyScope] = useState({
-    memberId: '', shareItinerary: true, shareTotalSpend: false, shareIndividualExpenses: false,
+  const [simulatedPrivacyScope, setSimulatedPrivacyScope] = useState<PrivacyScopeSettings>({
+    memberId: '',
+    shareItinerary: true,
+    shareTotalSpend: false,
+    shareIndividualExpenses: false,
+    shareTransactionsWithGroup: false,
+    shareReceiptsWithGroup: false,
+    maskIndividualLineItems: true,
   });
 
   const [showTraceModal, setShowTraceModal] = useState(false);
@@ -90,11 +97,11 @@ export default function PersonalImpactLensPage() {
   }, [currentMember]);
 
   useEffect(() => {
-    if (currentMember && events.length > 0) {
-      const tr = generateBalanceTrace(tripId, events, currentMember.memberId);
+    if (currentMember && events.length > 0 && tripId) {
+      const tr = generateBalanceTrace(tripId, events, currentMember.memberId, state?.constitution);
       setTrace(tr);
     }
-  }, [currentMember, events]);
+  }, [currentMember, events, tripId, state?.constitution]);
 
   const togglePrivacySetting = (key: string) => {
     setSimulatedPrivacyScope(prev => ({ ...prev, [key]: !(prev as Record<string, any>)[key] }));
@@ -102,8 +109,8 @@ export default function PersonalImpactLensPage() {
 
   const profile: PersonalImpactProfile | null = useMemo(() => {
     if (!state || !currentMember) return null;
-    return computePersonalImpactProfile(state, currentMember.memberId);
-  }, [state, currentMember]);
+    return computePersonalImpactProfile(state, currentMember.memberId, simulatedPrivacyScope);
+  }, [state, currentMember, simulatedPrivacyScope]);
 
   if (loading) {
     return (
@@ -114,14 +121,9 @@ export default function PersonalImpactLensPage() {
     );
   }
 
-  const netBalance = profile ? profile.netBalance : 0;
+  const netBalance = profile ? (profile.netBalance ?? ((profile.totalFronted ?? profile.totalPaid ?? 0) - profile.totalConsumed)) : 0;
   const isOwed = netBalance > 0;
   const isOwing = netBalance < 0;
-
-  const allItinerary = useMemo(() => {
-    if (!profile) return [];
-    return [...profile.joinedBookings, ...profile.skippedBookings];
-  }, [profile]);
 
   const btnTab = (id: string) => ({
     display: 'inline-flex', alignItems: 'center', gap: '0.375rem', padding: '0.5rem 0.875rem', borderRadius: '0.75rem', fontSize: '0.75rem', fontWeight: 700,
@@ -182,8 +184,8 @@ export default function PersonalImpactLensPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
           {[
             { label: 'Net Balance', value: `${isOwed ? '+' : ''}₹${Math.abs(netBalance).toLocaleString('en-IN')}`, desc: isOwed ? 'You will be repaid' : isOwing ? 'You owe the group' : 'Settled', color: isOwed ? '#059669' : isOwing ? '#dc2626' : '#64748b', bg: isOwed ? '#ecfdf5' : isOwing ? '#fef2f2' : 'white', border: isOwed ? '#a7f3d0' : isOwing ? '#fecaca' : COLORS.cream, action: () => setShowTraceModal(true) },
-            { label: 'Total Consumed', value: `₹${profile.totalConsumed.toLocaleString('en-IN')}`, desc: 'Your share of trip expenses', color: COLORS.burgundy, action: null },
-            { label: 'Fronted / Paid', value: `₹${profile.totalPaid.toLocaleString('en-IN')}`, desc: 'Amount you paid on behalf of group', color: COLORS.burgundy, action: null },
+            { label: 'Total Consumed', value: `₹${(profile.totalConsumed ?? 0).toLocaleString('en-IN')}`, desc: 'Your share of trip expenses', color: COLORS.burgundy, action: null },
+            { label: 'Fronted / Paid', value: `₹${(profile.totalFronted ?? profile.totalPaid ?? 0).toLocaleString('en-IN')}`, desc: 'Amount you paid on behalf of group', color: COLORS.burgundy, action: null },
           ].map(m => (
             <div key={m.label} style={{ padding: '1.25rem', borderRadius: '1rem', background: m.bg || 'white', border: `1px solid ${m.border || COLORS.cream}`, boxShadow: '0 2px 8px rgba(0,0,0,0.02)', display: 'flex', flexDirection: 'column' }}>
               <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.25rem' }}>{m.label}</span>
@@ -216,23 +218,23 @@ export default function PersonalImpactLensPage() {
             <div style={{ background: 'white', borderRadius: '1rem', padding: '1.5rem', border: `1px solid ${COLORS.cream}` }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
                 <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: COLORS.burgundy }}>Your Consumption Breakdown</h3>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '9999px', background: COLORS.burgundyPale, color: COLORS.burgundy }}>{profile.consumedByCategory.length} Categories</span>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '9999px', background: COLORS.burgundyPale, color: COLORS.burgundy }}>{(profile.categoryBreakdown || profile.consumedByCategory || []).length} Categories</span>
               </div>
               <div style={{ display: 'grid', gap: '1rem' }}>
-                {profile.consumedByCategory.map(cat => {
+                {(profile.categoryBreakdown || profile.consumedByCategory || []).map(cat => {
                   const Icon = typeIcon(cat.category);
                   const pct = profile.totalConsumed > 0 ? (cat.amount / profile.totalConsumed) * 100 : 0;
                   return (
                     <div key={cat.category}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', fontWeight: 700, color: COLORS.burgundy, marginBottom: '0.375rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', textTransform: 'capitalize' }}><div style={{ width: 24, height: 24, borderRadius: '0.375rem', background: COLORS.burgundyPale, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon size={14} /></div> {cat.category}</div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>₹{cat.amount.toLocaleString()} <span style={{ color: '#888', fontWeight: 600 }}>{pct.toFixed(0)}%</span></div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>₹{(cat.amount ?? 0).toLocaleString('en-IN')} <span style={{ color: '#888', fontWeight: 600 }}>{pct.toFixed(0)}%</span></div>
                       </div>
                       <div style={{ height: 6, background: '#f1f5f9', borderRadius: '9999px', overflow: 'hidden' }}><div style={{ height: '100%', width: `${pct}%`, background: COLORS.burgundy, borderRadius: '9999px' }} /></div>
                     </div>
                   );
                 })}
-                {profile.consumedByCategory.length === 0 && <div style={{ padding: '2rem', textAlign: 'center', color: '#999', fontSize: '0.8rem', border: `1px dashed ${COLORS.cream}`, borderRadius: '0.75rem' }}>No expenses recorded yet.</div>}
+                {(!profile.categoryBreakdown || profile.categoryBreakdown.length === 0) && (!profile.consumedByCategory || profile.consumedByCategory.length === 0) && <div style={{ padding: '2rem', textAlign: 'center', color: '#999', fontSize: '0.8rem', border: `1px dashed ${COLORS.cream}`, borderRadius: '0.75rem' }}>No expenses recorded yet.</div>}
               </div>
             </div>
 
@@ -242,23 +244,23 @@ export default function PersonalImpactLensPage() {
               <p style={{ fontSize: '0.75rem', color: '#888', marginBottom: '1.5rem' }}>Simplified transfers to settle your balance.</p>
               
               <div style={{ display: 'grid', gap: '0.75rem' }}>
-                {profile.settlements.map((s, sIdx) => (
-                  <div key={sIdx} style={{ padding: '1rem', borderRadius: '0.75rem', background: 'white', border: `1px solid ${s.iOwe ? '#fecaca' : '#a7f3d0'}` }}>
+                {(profile.directSettlements || []).map(s => (
+                  <div key={s.id} style={{ padding: '1rem', borderRadius: '0.75rem', background: 'white', border: `1px solid ${s.direction === 'owe' ? '#fecaca' : '#a7f3d0'}` }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                      <span style={{ fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', padding: '0.15rem 0.5rem', borderRadius: '9999px', background: s.iOwe ? '#fee2e2' : '#d1fae5', color: s.iOwe ? '#dc2626' : '#059669' }}>
-                        {s.iOwe ? 'You Pay' : 'You Receive'}
+                      <span style={{ fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', padding: '0.15rem 0.5rem', borderRadius: '9999px', background: s.direction === 'owe' ? '#fee2e2' : '#d1fae5', color: s.direction === 'owe' ? '#dc2626' : '#059669' }}>
+                        {s.direction === 'owe' ? 'You Pay' : 'You Receive'}
                       </span>
-                      {s.iOwe && (
-                        <button onClick={() => setQrSettlement({ amount: s.amount, name: s.toName, upiLink: s.upiLink })} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', background: '#10b981', color: 'white', padding: '0.25rem 0.75rem', borderRadius: '0.5rem', fontSize: '0.7rem', fontWeight: 700, border: 'none', cursor: 'pointer' }}>
+                      {s.direction === 'owe' && (
+                        <button onClick={() => setQrSettlement({ amount: s.amount, name: s.otherMemberName, upiLink: s.upiLink })} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', background: '#10b981', color: 'white', padding: '0.25rem 0.75rem', borderRadius: '0.5rem', fontSize: '0.7rem', fontWeight: 700, border: 'none', cursor: 'pointer' }}>
                           <QrCode size={12} /> UPI
                         </button>
                       )}
                     </div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: 900, color: COLORS.burgundy, marginBottom: '0.25rem' }}>₹{s.amount.toLocaleString()}</div>
-                    <div style={{ fontSize: '0.8rem', color: '#666' }}>{s.iOwe ? 'to' : 'from'} <strong>{s.iOwe ? s.toName : s.fromName}</strong></div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 900, color: COLORS.burgundy, marginBottom: '0.25rem' }}>₹{(s.amount ?? 0).toLocaleString('en-IN')}</div>
+                    <div style={{ fontSize: '0.8rem', color: '#666' }}>{s.direction === 'owe' ? 'to' : 'from'} <strong>{s.otherMemberName}</strong></div>
                   </div>
                 ))}
-                {profile.settlements.length === 0 && <div style={{ padding: '2rem', textAlign: 'center', color: '#10b981', fontSize: '0.8rem', border: `1px dashed #a7f3d0`, background: '#ecfdf5', borderRadius: '0.75rem' }}><strong>All Settled!</strong> You have no pending transfers.</div>}
+                {(!profile.directSettlements || profile.directSettlements.length === 0) && <div style={{ padding: '2rem', textAlign: 'center', color: '#10b981', fontSize: '0.8rem', border: `1px dashed #a7f3d0`, background: '#ecfdf5', borderRadius: '0.75rem' }}><strong>All Settled!</strong> You have no pending transfers.</div>}
               </div>
             </div>
 
@@ -266,9 +268,9 @@ export default function PersonalImpactLensPage() {
             <div style={{ gridColumn: '1 / -1', background: '#f8fafc', borderRadius: '1rem', padding: '1.5rem', border: '1px solid #e2e8f0' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', color: '#475569' }}><Users size={16} /><h4 style={{ fontSize: '0.9rem', fontWeight: 800, margin: 0 }}>Group Aggregates Reference</h4></div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', fontSize: '0.8rem' }}>
-                <div><span style={{ color: '#64748b', display: 'block', marginBottom: '0.25rem' }}>Total Trip Spend</span><strong style={{ fontSize: '1.1rem', color: '#0f172a' }}>₹{profile.groupAggregates.totalGroupSpend.toLocaleString()}</strong></div>
-                <div><span style={{ color: '#64748b', display: 'block', marginBottom: '0.25rem' }}>Group Size</span><strong style={{ fontSize: '1.1rem', color: '#0f172a' }}>{profile.groupAggregates.totalGroupMembers} Travelers</strong></div>
-                <div><span style={{ color: '#64748b', display: 'block', marginBottom: '0.25rem' }}>Your Consumption Share</span><strong style={{ fontSize: '1.1rem', color: '#0f172a' }}>{((profile.totalConsumed / Math.max(1, profile.groupAggregates.totalGroupSpend)) * 100).toFixed(1)}% of total</strong></div>
+                <div><span style={{ color: '#64748b', display: 'block', marginBottom: '0.25rem' }}>Total Trip Spend</span><strong style={{ fontSize: '1.1rem', color: '#0f172a' }}>₹{(profile.groupAggregates?.totalGroupSpend ?? (profile.groupAggregates as any)?.totalSpend ?? 0).toLocaleString('en-IN')}</strong></div>
+                <div><span style={{ color: '#64748b', display: 'block', marginBottom: '0.25rem' }}>Group Size</span><strong style={{ fontSize: '1.1rem', color: '#0f172a' }}>{profile.groupAggregates?.totalGroupMembers ?? (profile.groupAggregates as any)?.memberCount ?? 0} Travelers</strong></div>
+                <div><span style={{ color: '#64748b', display: 'block', marginBottom: '0.25rem' }}>Your Consumption Share</span><strong style={{ fontSize: '1.1rem', color: '#0f172a' }}>{((profile.totalConsumed / Math.max(1, profile.groupAggregates?.totalGroupSpend || (profile.groupAggregates as any)?.totalSpend || 1)) * 100).toFixed(1)}% of total</strong></div>
               </div>
             </div>
           </motion.div>
@@ -277,30 +279,30 @@ export default function PersonalImpactLensPage() {
         {/* ─── TAB: ITINERARY ─── */}
         {activeTab === 'itinerary' && profile && (
           <motion.div key="itinerary" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.3 }} style={{ display: 'grid', gap: '0.75rem' }}>
-            {allItinerary.map((item, idx) => {
+            {(profile.itineraryInvolvement || []).map((item, idx) => {
               const Icon = typeIcon(item.type);
               return (
-                <div key={item.id || idx} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1.25rem', borderRadius: '1rem', background: item.joined ? 'white' : '#f8fafc', border: `1px solid ${COLORS.cream}`, opacity: item.joined ? 1 : 0.6 }}>
-                  <div style={{ width: 44, height: 44, borderRadius: '0.75rem', background: item.joined ? COLORS.burgundyPale : '#e2e8f0', color: item.joined ? COLORS.burgundy : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <div key={item.id || idx} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1.25rem', borderRadius: '1rem', background: item.isAttending ? 'white' : '#f8fafc', border: `1px solid ${COLORS.cream}`, opacity: item.isAttending ? 1 : 0.6 }}>
+                  <div style={{ width: 44, height: 44, borderRadius: '0.75rem', background: item.isAttending ? COLORS.burgundyPale : '#e2e8f0', color: item.isAttending ? COLORS.burgundy : '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <Icon size={18} />
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
                       <span style={{ fontSize: '0.95rem', fontWeight: 800, color: COLORS.burgundy }}>{item.label}</span>
-                      <span style={{ fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', padding: '0.15rem 0.5rem', borderRadius: '9999px', background: item.joined ? '#dcfce7' : '#f1f5f9', color: item.joined ? '#166534' : '#64748b' }}>
-                        {item.joined ? 'Attending' : 'Opted Out'}
+                      <span style={{ fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', padding: '0.15rem 0.5rem', borderRadius: '9999px', background: item.isAttending ? '#dcfce7' : '#f1f5f9', color: item.isAttending ? '#166534' : '#64748b' }}>
+                        {item.isAttending ? 'Attending' : 'Opted Out'}
                       </span>
                     </div>
-                    {item.startTime && <div style={{ fontSize: '0.75rem', color: '#888', display: 'flex', alignItems: 'center', gap: '0.375rem' }}><Calendar size={12} /> {item.startTime}</div>}
+                    {item.dateStr && <div style={{ fontSize: '0.75rem', color: '#888', display: 'flex', alignItems: 'center', gap: '0.375rem' }}><Calendar size={12} /> {item.dateStr}</div>}
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '1rem', fontWeight: 900, color: COLORS.burgundy }}>₹{item.myShare.toLocaleString()}</div>
-                    {item.cost > 0 && <div style={{ fontSize: '0.7rem', color: '#888' }}>Total: ₹{item.cost.toLocaleString()}</div>}
+                    <div style={{ fontSize: '1rem', fontWeight: 900, color: COLORS.burgundy }}>₹{(item.myShareAmount ?? 0).toLocaleString('en-IN')}</div>
+                    {item.totalItemCost > 0 && <div style={{ fontSize: '0.7rem', color: '#888' }}>Total: ₹{(item.totalItemCost ?? 0).toLocaleString('en-IN')}</div>}
                   </div>
                 </div>
               );
             })}
-            {allItinerary.length === 0 && <div style={{ padding: '3rem', textAlign: 'center', border: `1px dashed ${COLORS.cream}`, borderRadius: '1rem', color: '#888', fontSize: '0.85rem' }}>No itinerary items recorded yet.</div>}
+            {(!profile.itineraryInvolvement || profile.itineraryInvolvement.length === 0) && <div style={{ padding: '3rem', textAlign: 'center', border: `1px dashed ${COLORS.cream}`, borderRadius: '1rem', color: '#888', fontSize: '0.85rem' }}>No itinerary items recorded yet.</div>}
           </motion.div>
         )}
 
@@ -311,21 +313,27 @@ export default function PersonalImpactLensPage() {
               <AlertTriangle size={24} style={{ color: '#f59e0b', flexShrink: 0 }} />
               <div>
                 <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: COLORS.burgundy, margin: '0 0 0.25rem 0' }}>Your Cancellation Exposure</h3>
-                <p style={{ fontSize: '0.75rem', color: '#888', margin: 0, lineHeight: 1.5 }}>If you drop out of the trip right now, these are the non-refundable costs you are contractually exposed to based on the Fairness Constitution.</p>
+                <p style={{ fontSize: '0.75rem', color: '#888', margin: 0, lineHeight: 1.5 }}>
+                  If you drop out of the trip right now, these are the non-refundable costs you are contractually exposed to based on the Fairness Constitution.
+                  Total estimated exposure: <strong>₹{(profile.cancellationExposure?.totalPotentialExposure ?? 0).toLocaleString('en-IN')}</strong>.
+                </p>
               </div>
             </div>
             
             <div style={{ display: 'grid', gap: '0.75rem' }}>
-              {profile.cancellationExposure.items.map(exp => (
+              {(profile.cancellationExposure?.items || []).map(exp => (
                 <div key={exp.bookingId} style={{ padding: '1rem', borderRadius: '0.75rem', border: '1px solid #fde68a', background: '#fffbeb', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
                   <div>
                     <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#92400e', marginBottom: '0.25rem' }}>{exp.label}</div>
-                    <div style={{ fontSize: '0.75rem', color: '#b45309' }}>{exp.cancellationPolicy} — {exp.reason}</div>
+                    <div style={{ fontSize: '0.75rem', color: '#b45309' }}>
+                      <span style={{ textTransform: 'capitalize', fontWeight: 700 }}>{exp.riskLevel} Risk</span> — {exp.cancellationPolicy}
+                    </div>
+                    {exp.reason && <div style={{ fontSize: '0.7rem', color: '#78350f', marginTop: '0.2rem' }}>{exp.reason}</div>}
                   </div>
-                  <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#b45309' }}>Exposed: ₹{exp.potentialLoss.toLocaleString()}</div>
+                  <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#b45309' }}>Exposed: ₹{(exp.potentialLoss ?? 0).toLocaleString('en-IN')}</div>
                 </div>
               ))}
-              {profile.cancellationExposure.items.length === 0 && <div style={{ padding: '2rem', textAlign: 'center', color: '#10b981', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '0.75rem', fontSize: '0.85rem', fontWeight: 700 }}>You have ₹0 non-refundable exposure.</div>}
+              {(!profile.cancellationExposure?.items || profile.cancellationExposure.items.length === 0) && <div style={{ padding: '2rem', textAlign: 'center', color: '#10b981', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '0.75rem', fontSize: '0.85rem', fontWeight: 700 }}>You have ₹0 non-refundable exposure.</div>}
             </div>
           </motion.div>
         )}
@@ -337,24 +345,27 @@ export default function PersonalImpactLensPage() {
               <Building2 size={24} style={{ color: '#0ea5e9', flexShrink: 0 }} />
               <div>
                 <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: COLORS.burgundy, margin: '0 0 0.25rem 0' }}>Your Expected Credits</h3>
-                <p style={{ fontSize: '0.75rem', color: '#888', margin: 0, lineHeight: 1.5 }}>Refunds pending from vendors that will positively impact your balance when they clear.</p>
+                <p style={{ fontSize: '0.75rem', color: '#888', margin: 0, lineHeight: 1.5 }}>
+                  Refunds pending from vendors that will positively impact your balance when they clear.
+                  Total expected: <strong>₹{(profile.expectedRefunds?.totalExpectedRefund ?? 0).toLocaleString('en-IN')}</strong>.
+                </p>
               </div>
             </div>
 
             <div style={{ display: 'grid', gap: '0.75rem' }}>
-              {profile.expectedRefunds.items.map((ref, idx) => (
+              {(profile.pendingRefundImpacts || []).map((ref, idx) => (
                 <div key={ref.id || idx} style={{ padding: '1rem', borderRadius: '0.75rem', border: '1px solid #bae6fd', background: '#f0f9ff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
                   <div>
-                    <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0369a1', marginBottom: '0.25rem' }}>{ref.vendorName || ref.label}</div>
-                    <div style={{ fontSize: '0.75rem', color: '#0284c7' }}>Confidence: {ref.confidenceLevel} ({ref.confidencePercent}%)</div>
+                    <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0369a1', marginBottom: '0.25rem' }}>{ref.vendorName}</div>
+                    <div style={{ fontSize: '0.75rem', color: '#0284c7' }}>Confidence: {ref.confidence}</div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#0369a1' }}>+₹{ref.myEntitlement.toLocaleString()}</div>
-                    <div style={{ fontSize: '0.7rem', color: '#0284c7' }}>Total Refund: ₹{ref.totalRefundAmount.toLocaleString()}</div>
+                    <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#0369a1' }}>+₹{(ref.myShareOfRefund ?? 0).toLocaleString('en-IN')}</div>
+                    {ref.totalRefundAmount > 0 && <div style={{ fontSize: '0.7rem', color: '#0284c7' }}>Total Refund: ₹{(ref.totalRefundAmount ?? 0).toLocaleString('en-IN')}</div>}
                   </div>
                 </div>
               ))}
-              {profile.expectedRefunds.items.length === 0 && <div style={{ padding: '2rem', textAlign: 'center', color: '#888', border: `1px dashed ${COLORS.cream}`, borderRadius: '0.75rem', fontSize: '0.85rem' }}>No pending vendor refunds affect you.</div>}
+              {(!profile.pendingRefundImpacts || profile.pendingRefundImpacts.length === 0) && <div style={{ padding: '2rem', textAlign: 'center', color: '#888', border: `1px dashed ${COLORS.cream}`, borderRadius: '0.75rem', fontSize: '0.85rem' }}>No pending vendor refunds affect you.</div>}
             </div>
           </motion.div>
         )}
@@ -382,21 +393,21 @@ export default function PersonalImpactLensPage() {
                 <div>
                   <p style={{ fontSize: '0.8rem', color: '#666', marginBottom: '1.5rem' }}>Every expense is mathematically decomposed into sub-components, occupancy allocations, and refund credits with cited rules:</p>
                   <div style={{ display: 'grid', gap: '1rem', marginBottom: '2rem' }}>
-                    {profile.hierarchicalBreakdown.map((item, idx) => (
+                    {(profile.hierarchicalBreakdown || []).map((item, idx) => (
                       <div key={idx} style={{ padding: '1rem', borderRadius: '0.75rem', border: `1px solid ${COLORS.cream}`, background: '#fdfbfa' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                           <div style={{ fontSize: '0.9rem', fontWeight: 800, color: COLORS.burgundy }}><span style={{ textTransform: 'capitalize', color: '#888', fontWeight: 600, marginRight: '0.5rem', fontSize: '0.75rem' }}>{item.category}</span> {item.itemLabel}</div>
-                          <div style={{ textAlign: 'right', fontSize: '1rem', fontWeight: 900, color: COLORS.burgundy }}><span style={{ fontSize: '0.65rem', color: '#aaa', display: 'block' }}>Your Share</span> ₹{item.myTotalShare.toLocaleString()}</div>
+                          <div style={{ textAlign: 'right', fontSize: '1rem', fontWeight: 900, color: COLORS.burgundy }}><span style={{ fontSize: '0.65rem', color: '#aaa', display: 'block' }}>Your Share</span> ₹{(item.myTotalShare ?? 0).toLocaleString('en-IN')}</div>
                         </div>
                         <div style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
-                          {item.lines.map((line, lIdx) => (
+                          {(item.lines || []).map((line, lIdx) => (
                             <div key={lIdx} style={{ display: 'flex', gap: '0.75rem', padding: '0.375rem 0', borderTop: lIdx === 0 ? 'none' : `1px dashed ${COLORS.cream}` }}>
                               <div style={{ color: '#ccc' }}>{lIdx === item.lines.length - 1 ? '└──' : '├──'}</div>
                               <div style={{ flex: 1 }}>
                                 <div style={{ color: '#444' }}>{line.label}</div>
                                 {line.citation && <div style={{ color: '#0891b2', fontSize: '0.65rem', marginTop: '0.125rem' }}>{line.citation}</div>}
                               </div>
-                              <div style={{ fontWeight: 800, color: line.amount < 0 ? '#10b981' : COLORS.burgundy }}>{line.amount < 0 ? `-₹${Math.abs(line.amount).toLocaleString()}` : `₹${line.amount.toLocaleString()}`}</div>
+                              <div style={{ fontWeight: 800, color: line.amount < 0 ? '#10b981' : COLORS.burgundy }}>{line.amount < 0 ? `-₹${Math.abs(line.amount).toLocaleString('en-IN')}` : `₹${line.amount.toLocaleString('en-IN')}`}</div>
                             </div>
                           ))}
                         </div>
@@ -406,9 +417,9 @@ export default function PersonalImpactLensPage() {
 
                   <div style={{ padding: '1.25rem', borderRadius: '0.75rem', background: COLORS.burgundyPale, border: `1px solid ${COLORS.cream}` }}>
                     <div style={{ fontSize: '0.8rem', fontWeight: 800, color: COLORS.burgundy, marginBottom: '0.75rem' }}>Mathematical Net Balance Synthesis:</div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.375rem', color: '#666' }}><span>Total Fronted / Paid Out:</span><strong style={{ color: '#10b981' }}>+₹{profile.totalPaid.toLocaleString()}</strong></div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.75rem', color: '#666', borderBottom: `1px solid ${COLORS.cream}`, paddingBottom: '0.75rem' }}><span>Total Consumed Shares:</span><strong style={{ color: '#dc2626' }}>-₹{profile.totalConsumed.toLocaleString()}</strong></div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.1rem', fontWeight: 900, color: COLORS.burgundy }}><span>Your Net Balance:</span><strong style={{ color: netBalance >= 0 ? '#059669' : '#dc2626' }}>{netBalance >= 0 ? '+' : ''}₹{netBalance.toLocaleString()}</strong></div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.375rem', color: '#666' }}><span>Total Fronted / Paid Out:</span><strong style={{ color: '#10b981' }}>+₹{(profile.totalFronted ?? profile.totalPaid ?? 0).toLocaleString('en-IN')}</strong></div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.75rem', color: '#666', borderBottom: `1px solid ${COLORS.cream}`, paddingBottom: '0.75rem' }}><span>Total Consumed Shares:</span><strong style={{ color: '#dc2626' }}>-₹{(profile.totalConsumed ?? 0).toLocaleString('en-IN')}</strong></div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.1rem', fontWeight: 900, color: COLORS.burgundy }}><span>Your Net Balance:</span><strong style={{ color: netBalance >= 0 ? '#059669' : '#dc2626' }}>{netBalance >= 0 ? '+' : ''}₹{netBalance.toLocaleString('en-IN')}</strong></div>
                   </div>
                 </div>
               ) : (
