@@ -7,9 +7,21 @@ import { parseBankSms, isBankSender } from './sms-parser';
 import { matchTransactionToTrip } from './trip-matcher';
 import type { TripState } from '../ledger';
 
+/** Raw SMS message returned from the native plugin */
+export interface RawSmsMessage {
+  sender: string;
+  body: string;
+  timestamp: number;
+  isBank?: boolean;
+}
+
 export interface SmsReaderPluginInterface {
   readBankSms(options?: { limit?: number }): Promise<{
-    messages: { sender: string; body: string; timestamp: number }[];
+    messages: RawSmsMessage[];
+    count: number;
+  }>;
+  readAllSms(options?: { limit?: number }): Promise<{
+    messages: RawSmsMessage[];
     count: number;
   }>;
   checkPermissions(): Promise<{ sms: 'granted' | 'denied' | 'prompt' }>;
@@ -70,6 +82,25 @@ export async function readDeviceBankSms(limit: number = 50): Promise<ParsedSmsTr
 }
 
 /**
+ * Reads ALL SMS messages from the device inbox (not just bank SMS).
+ * Returns raw messages with sender, body, timestamp, and whether the sender is a known bank.
+ * Throws on permission denial so the UI can show a proper error.
+ */
+export async function readAllDeviceSms(limit: number = 200): Promise<RawSmsMessage[]> {
+  // Check/request permissions
+  const perm = await SmsReader.checkPermissions();
+  if (perm.sms !== 'granted') {
+    const requested = await SmsReader.requestPermissions();
+    if (requested.sms !== 'granted') {
+      throw new Error('READ_SMS permission was denied by the user. Please grant SMS permission in Settings.');
+    }
+  }
+
+  const { messages } = await SmsReader.readAllSms({ limit });
+  return messages;
+}
+
+/**
  * Scans SMS messages and matches them against the active trip events.
  */
 export function matchSmsListToTrip(
@@ -78,3 +109,4 @@ export function matchSmsListToTrip(
 ): TripMatchResult[] {
   return transactions.map(tx => matchTransactionToTrip(tx, state));
 }
+

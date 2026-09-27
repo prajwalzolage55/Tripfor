@@ -111,6 +111,65 @@ public class SmsReaderPlugin extends Plugin {
         }
     }
 
+    /**
+     * Reads ALL SMS messages from inbox without any sender filtering.
+     * Returns every message so the UI can display real device SMS.
+     */
+    @PluginMethod
+    public void readAllSms(PluginCall call) {
+        JSArray smsList = new JSArray();
+        ContentResolver resolver = getContext().getContentResolver();
+
+        try {
+            Uri inboxUri = Uri.parse("content://sms/inbox");
+            String[] projection = new String[]{"_id", "address", "body", "date"};
+
+            Cursor cursor = resolver.query(
+                inboxUri,
+                projection,
+                null,
+                null,
+                "date DESC"
+            );
+
+            if (cursor != null) {
+                int bodyIdx = cursor.getColumnIndex("body");
+                int addressIdx = cursor.getColumnIndex("address");
+                int dateIdx = cursor.getColumnIndex("date");
+
+                int maxCount = call.getInt("limit", 200);
+                int count = 0;
+
+                while (cursor.moveToNext() && count < maxCount) {
+                    String sender = addressIdx >= 0 ? cursor.getString(addressIdx) : "";
+                    String body = bodyIdx >= 0 ? cursor.getString(bodyIdx) : "";
+                    long date = dateIdx >= 0 ? cursor.getLong(dateIdx) : System.currentTimeMillis();
+
+                    JSObject smsObj = new JSObject();
+                    smsObj.put("sender", sender != null ? sender : "");
+                    smsObj.put("body", body != null ? body : "");
+                    smsObj.put("timestamp", date);
+                    smsObj.put("isBank", BankSmsReceiver.isBankSender(sender));
+                    smsList.put(smsObj);
+                    count++;
+                }
+                cursor.close();
+            }
+
+            JSObject result = new JSObject();
+            result.put("messages", smsList);
+            result.put("count", smsList.length());
+            call.resolve(result);
+
+        } catch (SecurityException se) {
+            Log.e(TAG, "SMS permission denied: " + se.getMessage());
+            call.reject("READ_SMS permission not granted. Request permission first.");
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to read SMS: " + e.getMessage());
+            call.reject("Failed to read SMS: " + e.getMessage());
+        }
+    }
+
     @PluginMethod
     public void isSupported(PluginCall call) {
         JSObject ret = new JSObject();

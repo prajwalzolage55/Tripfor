@@ -11,7 +11,7 @@ import {
   Map, Receipt, Users, User, ArrowLeft, Copy, Check, History,
   GitFork, Scale, Network, Sparkles, ArrowRightLeft,
   Menu, X, ChevronLeft, ChevronRight, MapPin, CloudSun,
-  Sun, CloudRain, Snowflake
+  Sun, CloudRain, Snowflake, Smartphone
 } from 'lucide-react';
 import Link from 'next/link';
 import { fetchLiveWeather, type LiveWeatherReport } from '@/lib/weather';
@@ -35,6 +35,7 @@ const NAV_ITEMS = [
   { key: 'shapley', label: 'Shapley Split', icon: Sparkles },
   { key: 'router', label: 'Settlement Router', icon: ArrowRightLeft },
   { key: 'graph', label: 'Event Graph', icon: Network },
+  { key: 'sms-reader', label: 'SMS Reader', icon: Smartphone, badge: 'NEW' },
   { key: 'group', label: 'Group', icon: Users },
   { key: 'me', label: 'My View', icon: User },
 ];
