@@ -3,78 +3,140 @@
 
 import type { ParsedSmsTransaction, TransactionDirection, BankSenderPattern } from './types';
 
-// ─── TRAI DLT Bank Sender Whitelist (Part 3 Spec) ───────────────────────────
+// ─── TRAI DLT Bank Sender Whitelist ─────────────────────────────────────────
 // Formats: XX-BANKCD (e.g. VM-HDFCBK, AD-SBIINB, AX-ICICIB)
 
 export const BANK_SENDERS_WHITELIST: BankSenderPattern[] = [
   // Public Sector Banks
   { code: 'SBIINB', name: 'State Bank of India', category: 'public' },
   { code: 'SBISMS', name: 'State Bank of India', category: 'public' },
+  { code: 'SBIBNK', name: 'State Bank of India', category: 'public' },
+  { code: 'SBIPSG', name: 'State Bank of India', category: 'public' },
+  { code: 'SBIUPI', name: 'State Bank of India', category: 'public' },
+  { code: 'SBMSMS', name: 'State Bank of India', category: 'public' },
   { code: 'UNIONB', name: 'Union Bank of India', category: 'public' },
+  { code: 'UBISMS', name: 'Union Bank of India', category: 'public' },
   { code: 'PNBSMS', name: 'Punjab National Bank', category: 'public' },
+  { code: 'PNBUPI', name: 'Punjab National Bank', category: 'public' },
   { code: 'BOBIBD', name: 'Bank of Baroda', category: 'public' },
+  { code: 'BOBTXN', name: 'Bank of Baroda', category: 'public' },
+  { code: 'BARB', name: 'Bank of Baroda', category: 'public' },
   { code: 'CANBNK', name: 'Canara Bank', category: 'public' },
+  { code: 'CNRB', name: 'Canara Bank', category: 'public' },
   { code: 'INDBNK', name: 'Indian Bank', category: 'public' },
   { code: 'CENTBK', name: 'Central Bank of India', category: 'public' },
+  { code: 'CBIBNK', name: 'Central Bank of India', category: 'public' },
+  { code: 'CBSSMS', name: 'Central Bank of India', category: 'public' },
+  { code: 'BOIBNK', name: 'Bank of India', category: 'public' },
+  { code: 'BOIND', name: 'Bank of India', category: 'public' },
   { code: 'ANDHBK', name: 'Andhra Bank', category: 'public' },
   { code: 'ALLBKS', name: 'Allahabad Bank', category: 'public' },
   { code: 'SYNBNK', name: 'Syndicate Bank', category: 'public' },
   { code: 'UCOBNK', name: 'UCO Bank', category: 'public' },
+  { code: 'IOBSMS', name: 'Indian Overseas Bank', category: 'public' },
+  { code: 'MAHBNK', name: 'Bank of Maharashtra', category: 'public' },
+
   // Private Sector Banks
   { code: 'HDFCBK', name: 'HDFC Bank', category: 'private' },
+  { code: 'HDFCBN', name: 'HDFC Bank', category: 'private' },
+  { code: 'ABORIG', name: 'HDFC Bank', category: 'private' },
   { code: 'ICICIB', name: 'ICICI Bank', category: 'private' },
+  { code: 'ICIBNK', name: 'ICICI Bank', category: 'private' },
   { code: 'AXISBK', name: 'Axis Bank', category: 'private' },
+  { code: 'AXISBN', name: 'Axis Bank', category: 'private' },
   { code: 'YESBNK', name: 'Yes Bank', category: 'private' },
   { code: 'INDUSB', name: 'IndusInd Bank', category: 'private' },
   { code: 'KOTKBK', name: 'Kotak Mahindra Bank', category: 'private' },
+  { code: 'KOTAKB', name: 'Kotak Mahindra Bank', category: 'private' },
+  { code: 'IDFCFB', name: 'IDFC FIRST Bank', category: 'private' },
+  { code: 'IDFCBK', name: 'IDFC FIRST Bank', category: 'private' },
   { code: 'RBLBNK', name: 'RBL Bank', category: 'private' },
   { code: 'IDBIBK', name: 'IDBI Bank', category: 'private' },
   { code: 'FEDBKS', name: 'Federal Bank', category: 'private' },
   { code: 'CSFBNK', name: 'CSB Bank', category: 'private' },
-  { code: 'AUSFBN', name: 'AU Small Finance Bank', category: 'private' },
   { code: 'DCBBNK', name: 'DCB Bank', category: 'private' },
+  { code: 'BANDHN', name: 'Bandhan Bank', category: 'private' },
+
   // Small Finance Banks
+  { code: 'AUSFBN', name: 'AU Small Finance Bank', category: 'small_finance' },
+  { code: 'AUBANK', name: 'AU Small Finance Bank', category: 'small_finance' },
   { code: 'UJJIVN', name: 'Ujjivan Small Finance Bank', category: 'small_finance' },
   { code: 'EQUTAS', name: 'Equitas Small Finance Bank', category: 'small_finance' },
   { code: 'SURYOD', name: 'Suryoday Small Finance Bank', category: 'small_finance' },
   { code: 'FINCAR', name: 'Fincare Small Finance Bank', category: 'small_finance' },
-  // Payments Banks
+
+  // Payments Banks & Fintech
   { code: 'AIRBNK', name: 'Airtel Payments Bank', category: 'payments' },
   { code: 'PAYTMB', name: 'Paytm Payments Bank', category: 'payments' },
   { code: 'INDPBK', name: 'India Post Payments Bank', category: 'payments' },
   { code: 'FINOBN', name: 'Fino Payments Bank', category: 'payments' },
+
   // Wallets / UPI Providers
   { code: 'PAYTMW', name: 'Paytm Wallet', category: 'wallet_upi' },
+  { code: 'PAYTM', name: 'Paytm', category: 'wallet_upi' },
   { code: 'PHONEPE', name: 'PhonePe', category: 'wallet_upi' },
   { code: 'GPAYMS', name: 'Google Pay', category: 'wallet_upi' },
+  { code: 'GPAY', name: 'Google Pay', category: 'wallet_upi' },
   { code: 'CREDAP', name: 'CRED', category: 'wallet_upi' },
+  { code: 'CRED', name: 'CRED', category: 'wallet_upi' },
   { code: 'AMZPAY', name: 'Amazon Pay', category: 'wallet_upi' },
+  { code: 'BHARPE', name: 'BharatPe', category: 'wallet_upi' },
+  { code: 'MOBIKW', name: 'MobiKwik', category: 'wallet_upi' },
+  { code: 'JUPITR', name: 'Jupiter Money', category: 'wallet_upi' },
+  { code: 'FIBANK', name: 'Fi Money', category: 'wallet_upi' },
+  { code: 'SLICEC', name: 'Slice', category: 'wallet_upi' },
+];
+
+const BANK_ROOT_KEYWORDS = [
+  'HDFC', 'ICICI', 'AXIS', 'KOTAK', 'SBI', 'IDFC', 'BOB', 'BOI',
+  'PNB', 'CANARA', 'UNION', 'PAYTM', 'PHONEPE', 'GPAY', 'CRED',
+  'AMZPAY', 'SLICE', 'JUPITER', 'YES', 'FEDERAL', 'RBL', 'BANDHAN',
+  'CITI', 'HSBC', 'SCBANK'
 ];
 
 /**
  * Checks whether the incoming sender address belongs to a registered Indian bank/financial institution.
- * Strips 2-letter TRAI prefix (e.g. VM-, AD-, AX-, BZ-, etc.)
  */
 export function isBankSender(sender: string): boolean {
   if (!sender) return false;
-  // Strip 2-letter prefix if present (e.g. "VM-HDFCBK" -> "HDFCBK")
-  const normalized = sender.trim().replace(/^[A-Za-z]{2}-/, '').toUpperCase();
-  return BANK_SENDERS_WHITELIST.some(b => normalized.includes(b.code));
+  const clean = sender.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (BANK_SENDERS_WHITELIST.some(b => clean.includes(b.code))) return true;
+  return BANK_ROOT_KEYWORDS.some(k => clean.includes(k));
 }
 
 export function getBankInfo(sender: string): BankSenderPattern | undefined {
   if (!sender) return undefined;
-  const normalized = sender.trim().replace(/^[A-Za-z]{2}-/, '').toUpperCase();
-  return BANK_SENDERS_WHITELIST.find(b => normalized.includes(b.code));
+  const clean = sender.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const found = BANK_SENDERS_WHITELIST.find(b => clean.includes(b.code));
+  if (found) return found;
+
+  for (const root of BANK_ROOT_KEYWORDS) {
+    if (clean.includes(root)) {
+      return { code: root, name: `${root} Bank`, category: 'private' };
+    }
+  }
+  return undefined;
 }
 
-// ─── Layer 1 Regex Parser (Part 4 Spec) ─────────────────────────────────────
+// ─── Regex Parser ───────────────────────────────────────────────────────────
 
-const AMOUNT_REGEX = /(?:Rs\.?|INR|₹)\s*([\d,]+(?:\.\d{1,2})?)/i;
-const DIRECTION_REGEX = /\b(debited|credited|debit|credit|withdrawn|received|spent|paid)\b/i;
-const ACCOUNT_REGEX = /(?:A\/c|Acct|account|card)[\s\w]*?(?:XX+|\*+)(\d{4})/i;
-const UPI_REF_REGEX = /(?:UPI[\/\s]Ref|Ref No|UTR|Ref)[\s:]*(\d{8,20})/i;
-const MERCHANT_REGEX = /(?:to|at|via)\s+([A-Z0-9][A-Za-z0-9\s&.'\-]{2,35})(?:\s+on|\s+via|\s+Ref|\.|\s*$)/i;
+// Matches Rs., Rs, INR, ₹ followed by digits, or debited/credited by [digits]
+const AMOUNT_REGEX = /(?:(?:Rs\.?|INR|₹)\s*([\d,]+(?:\.\d{1,2})?)|(?:debited|credited|spent|withdrawn|paid|received|deposited|transfer(?:red)?\s+of)\s+(?:by|for|with|of)?\s*(?:Rs\.?|INR|₹)?\s*([\d,]+(?:\.\d{1,2})?))/i;
+
+const DIRECTION_DEBIT_REGEX = /\b(debited|debit|withdrawn|spent|paid|transferred|sent|dr|purchase|payment)\b/i;
+const DIRECTION_CREDIT_REGEX = /\b(credited|credit|deposited|received|refund|cashback|cr|added)\b/i;
+
+const ACCOUNT_REGEX = /(?:A\/c|Acct|account|card)[\s\w.:]*?(?:XX+|\*+|\.{2,}|ending\s*(?:in\s*)?)(\d{4})/i;
+const UPI_REF_REGEX = /(?:UPI[\/\s]Ref(?:[\s:]*no)?|Ref[\s:]*No|UTR|Txn[\s:]*Ref|Ref[\s:]+)(\d{8,22})/i;
+
+const MERCHANT_PATTERNS = [
+  /(?:to|at|info[\s:]+|paid to|spent at)\s+([A-Z0-9][A-Za-z0-9\s&.'\-]{2,35})(?:\s+on|\s+via|\s+Ref|\s+UPI|\.|\s*$)/i,
+  /(?:VPA|vpa)\s+([a-zA-Z0-9.\-_]+@[a-zA-Z0-9]+)/i,
+  /(?:transfer to|transferred to)\s+([A-Z0-9][A-Za-z0-9\s&.'\-]{2,35})(?:\s+on|\s+via|\s+Ref|\.|\s*$)/i,
+];
+
+// OTP and loan spam patterns to reject
+const OTP_OR_SPAM_REGEX = /\b(?:otp|one\s*time\s*password|verification\s*code|secret\s*code|security\s*code|pre-?approved|apply\s*now|instant\s*loan|win\s+up\s+to|congratulations)\b/i;
 
 /**
  * Calculates a confidence score (0.0 to 1.0) based on extracted fields.
@@ -105,23 +167,25 @@ export function parseBankSms(
 ): ParsedSmsTransaction | null {
   if (!body) return null;
 
+  // 0. Exclude OTPs and promotional spam
+  if (OTP_OR_SPAM_REGEX.test(body)) {
+    return null;
+  }
+
   // 1. Amount Extraction
   const amountMatch = body.match(AMOUNT_REGEX);
   if (!amountMatch) return null;
-  const cleanAmountStr = amountMatch[1].replace(/,/g, '');
+  const cleanAmountStr = (amountMatch[1] || amountMatch[2])?.replace(/,/g, '');
+  if (!cleanAmountStr) return null;
   const amount = parseFloat(cleanAmountStr);
   if (isNaN(amount) || amount <= 0) return null;
 
   // 2. Direction Extraction
-  const directionMatch = body.match(DIRECTION_REGEX);
   let direction: TransactionDirection = 'DEBIT';
-  if (directionMatch) {
-    const rawDir = directionMatch[1].toLowerCase();
-    if (['debited', 'debit', 'withdrawn', 'spent', 'paid'].includes(rawDir)) {
-      direction = 'DEBIT';
-    } else if (['credited', 'credit', 'received'].includes(rawDir)) {
-      direction = 'CREDIT';
-    }
+  if (DIRECTION_CREDIT_REGEX.test(body)) {
+    direction = 'CREDIT';
+  } else if (DIRECTION_DEBIT_REGEX.test(body)) {
+    direction = 'DEBIT';
   }
 
   // 3. Account Last 4 Digits
@@ -133,13 +197,16 @@ export function parseBankSms(
   const upiRef = upiMatch ? upiMatch[1] : undefined;
 
   // 5. Merchant / Payee
-  const merchantMatch = body.match(MERCHANT_REGEX);
-  let merchant = merchantMatch ? merchantMatch[1].trim() : undefined;
-  // Clean trailing punctuation or noise
-  if (merchant) {
-    merchant = merchant.replace(/[\.\,\-]+$/, '').trim();
-    if (merchant.toLowerCase().startsWith('your ') || merchant.toLowerCase().includes('account')) {
-      merchant = undefined;
+  let merchant: string | undefined;
+  for (const pattern of MERCHANT_PATTERNS) {
+    const mMatch = body.match(pattern);
+    if (mMatch && mMatch[1]) {
+      const candidate = mMatch[1].trim().replace(/[\.\,\-]+$/, '').trim();
+      const lower = candidate.toLowerCase();
+      if (!lower.startsWith('your ') && !lower.includes('account') && !lower.includes('available') && candidate.length >= 2) {
+        merchant = candidate;
+        break;
+      }
     }
   }
 

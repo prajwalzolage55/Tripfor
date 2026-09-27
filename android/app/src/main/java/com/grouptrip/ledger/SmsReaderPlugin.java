@@ -53,7 +53,7 @@ public class SmsReaderPlugin extends Plugin {
     }
 
     /**
-     * Reads past SMS messages from inbox matching whitelisted Indian bank sender IDs (Part 2 Step 2).
+     * Reads past bank/transaction SMS messages from inbox (Part 2 Step 2).
      */
     @PluginMethod
     public void readBankSms(PluginCall call) {
@@ -79,17 +79,24 @@ public class SmsReaderPlugin extends Plugin {
 
                 int maxCount = call.getInt("limit", 100);
                 int count = 0;
+                int totalScanned = 0;
+                int maxScanLimit = 2000;
 
-                while (cursor.moveToNext() && count < maxCount) {
+                while (cursor.moveToNext() && count < maxCount && totalScanned < maxScanLimit) {
+                    totalScanned++;
                     String sender = addressIdx >= 0 ? cursor.getString(addressIdx) : "";
                     String body = bodyIdx >= 0 ? cursor.getString(bodyIdx) : "";
                     long date = dateIdx >= 0 ? cursor.getLong(dateIdx) : System.currentTimeMillis();
 
-                    if (BankSmsReceiver.isBankSender(sender)) {
+                    if (sender == null) sender = "";
+                    if (body == null) body = "";
+
+                    if (BankSmsReceiver.isBankOrTransactionSms(sender, body)) {
                         JSObject smsObj = new JSObject();
                         smsObj.put("sender", sender);
                         smsObj.put("body", body);
                         smsObj.put("timestamp", date);
+                        smsObj.put("isBank", true);
                         smsList.put(smsObj);
                         count++;
                     }
@@ -112,13 +119,15 @@ public class SmsReaderPlugin extends Plugin {
     }
 
     /**
-     * Reads ALL SMS messages from inbox without any sender filtering.
-     * Returns every message so the UI can display real device SMS.
+     * Reads SMS messages from inbox.
+     * Uses both sender ID and body content to detect bank/transaction messages.
+     * Defaults to bankOnly = true so only transaction SMS are returned.
      */
     @PluginMethod
     public void readAllSms(PluginCall call) {
         JSArray smsList = new JSArray();
         ContentResolver resolver = getContext().getContentResolver();
+        boolean bankOnly = Boolean.TRUE.equals(call.getBoolean("bankOnly", true));
 
         try {
             Uri inboxUri = Uri.parse("content://sms/inbox");
@@ -137,19 +146,30 @@ public class SmsReaderPlugin extends Plugin {
                 int addressIdx = cursor.getColumnIndex("address");
                 int dateIdx = cursor.getColumnIndex("date");
 
-                int maxCount = call.getInt("limit", 200);
+                int maxCount = call.getInt("limit", 500);
                 int count = 0;
+                int totalScanned = 0;
+                int maxScanLimit = 2000;
 
-                while (cursor.moveToNext() && count < maxCount) {
+                while (cursor.moveToNext() && count < maxCount && totalScanned < maxScanLimit) {
+                    totalScanned++;
                     String sender = addressIdx >= 0 ? cursor.getString(addressIdx) : "";
                     String body = bodyIdx >= 0 ? cursor.getString(bodyIdx) : "";
                     long date = dateIdx >= 0 ? cursor.getLong(dateIdx) : System.currentTimeMillis();
 
+                    if (sender == null) sender = "";
+                    if (body == null) body = "";
+
+                    boolean isBank = BankSmsReceiver.isBankOrTransactionSms(sender, body);
+
+                    // If bankOnly mode, skip non-bank messages
+                    if (bankOnly && !isBank) continue;
+
                     JSObject smsObj = new JSObject();
-                    smsObj.put("sender", sender != null ? sender : "");
-                    smsObj.put("body", body != null ? body : "");
+                    smsObj.put("sender", sender);
+                    smsObj.put("body", body);
                     smsObj.put("timestamp", date);
-                    smsObj.put("isBank", BankSmsReceiver.isBankSender(sender));
+                    smsObj.put("isBank", isBank);
                     smsList.put(smsObj);
                     count++;
                 }
