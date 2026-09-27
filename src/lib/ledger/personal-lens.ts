@@ -79,6 +79,10 @@ export interface PrivacyScopeSettings {
   shareTransactionsWithGroup: boolean;
   shareReceiptsWithGroup: boolean;
   maskIndividualLineItems: boolean;
+  shareTotalSpend?: boolean;
+  shareItinerary?: boolean;
+  shareIndividualExpenses?: boolean;
+  memberId?: string;
 }
 
 export interface PersonalItineraryItem {
@@ -102,6 +106,7 @@ export interface PersonalImpactProfile {
 
   // Financial summary
   totalPaid: number;
+  totalFronted: number;
   totalConsumed: number;
   netBalance: number;
   settlements: {
@@ -113,13 +118,30 @@ export interface PersonalImpactProfile {
     iOwe: boolean;
     upiLink?: string;
   }[];
+  directSettlements: {
+    id: string;
+    amount: number;
+    direction: 'owe' | 'receive';
+    otherMemberName: string;
+    upiLink?: string;
+  }[];
 
   // Category breakdown
   consumedByCategory: CategoryConsumption[];
+  categoryBreakdown: CategoryConsumption[];
 
   // Itinerary items
   joinedBookings: PersonalItineraryItem[];
   skippedBookings: PersonalItineraryItem[];
+  itineraryInvolvement: {
+    id: string;
+    label: string;
+    type: string;
+    totalItemCost: number;
+    myShareAmount: number;
+    dateStr: string | null;
+    isAttending: boolean;
+  }[];
 
   // "Why do I owe this?" Hierarchical Tree Breakdown
   hierarchicalBreakdown: ItemizedOweBreakdown[];
@@ -135,6 +157,13 @@ export interface PersonalImpactProfile {
     totalExpectedRefund: number;
     items: ExpectedPersonalRefund[];
   };
+  pendingRefundImpacts: {
+    id: string;
+    vendorName: string;
+    confidence: string;
+    myShareOfRefund: number;
+    totalRefundAmount: number;
+  }[];
 
   // Privacy Scoping
   privacyScope: PrivacyScopeSettings;
@@ -145,6 +174,8 @@ export interface PersonalImpactProfile {
     totalGroupBookings: number;
     totalGroupMembers: number;
     groupSettlementCount: number;
+    totalSpend: number;
+    memberCount: number;
   };
 }
 
@@ -478,20 +509,56 @@ export function computePersonalImpactProfile(
     totalGroupBookings: state.bookings.length,
     totalGroupMembers: state.members.length,
     groupSettlementCount: state.settlements.length,
+    totalSpend: state.totalSpent,
+    memberCount: state.members.length,
   };
+
+  const directSettlements = settlements.map(s => ({
+    id: `${s.from}-${s.to}`,
+    amount: s.amount,
+    direction: s.iOwe ? ('owe' as const) : ('receive' as const),
+    otherMemberName: s.iOwe ? s.toName : s.fromName,
+    upiLink: s.upiLink,
+  }));
+
+  const itineraryInvolvement = [...joinedBookings, ...skippedBookings].map(b => ({
+    id: b.id,
+    label: b.label,
+    type: b.type,
+    totalItemCost: b.cost,
+    myShareAmount: b.myShare,
+    dateStr: b.startTime,
+    isAttending: b.joined,
+  }));
+
+  const pendingRefundImpacts = refundItems.map(r => ({
+    id: r.id,
+    vendorName: r.vendorName,
+    confidence: `${r.confidencePercent}% (${r.confidenceLevel})`,
+    myShareOfRefund: r.myEntitlement,
+    totalRefundAmount: r.totalRefundAmount,
+  }));
+
+  const roundedPaid = Math.round(totalPaid * 100) / 100;
+  const roundedConsumed = Math.round(totalConsumed * 100) / 100;
+  const roundedNetBalance = Math.round(netBalance * 100) / 100;
 
   return {
     memberId: member.memberId,
     userId: member.userId,
     displayName: member.displayName,
     joinedAt: member.joinedAt,
-    totalPaid: Math.round(totalPaid * 100) / 100,
-    totalConsumed: Math.round(totalConsumed * 100) / 100,
-    netBalance: Math.round(netBalance * 100) / 100,
+    totalPaid: roundedPaid,
+    totalFronted: roundedPaid,
+    totalConsumed: roundedConsumed,
+    netBalance: roundedNetBalance,
     settlements,
+    directSettlements,
     consumedByCategory,
+    categoryBreakdown: consumedByCategory,
     joinedBookings,
     skippedBookings,
+    itineraryInvolvement,
     hierarchicalBreakdown,
     cancellationExposure: {
       totalPotentialExposure: Math.round(totalPotentialExposure * 100) / 100,
@@ -501,6 +568,7 @@ export function computePersonalImpactProfile(
       totalExpectedRefund: Math.round(totalExpectedRefund * 100) / 100,
       items: refundItems,
     },
+    pendingRefundImpacts,
     privacyScope,
     groupAggregates,
   };

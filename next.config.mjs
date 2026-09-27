@@ -14,6 +14,14 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  async rewrites() {
+    return isProd ? [] : [
+      {
+        source: '/dashboard',
+        destination: '/hub',
+      },
+    ];
+  },
 };
 
 export default nextConfig;

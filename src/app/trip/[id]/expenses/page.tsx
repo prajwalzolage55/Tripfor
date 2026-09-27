@@ -19,7 +19,7 @@ const COLORS = {
   burgundy: '#791523',
   cream: '#eadecd',
   offWhite: '#fdfbfa',
-  rose: '#d05461'
+  rose: '#b83a4b'
 };
 
 const SPLIT_OPTIONS: { value: SplitType; label: string }[] = [

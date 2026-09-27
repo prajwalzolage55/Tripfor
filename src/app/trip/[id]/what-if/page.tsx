@@ -413,6 +413,32 @@ export default function WhatIfPage() {
         )}
       </div>
 
+      {/* ─── Weather Twin What-If Simulation Studio Banner ─── */}
+      <div className="rounded-2xl p-5 bg-gradient-to-r from-rose-950/60 via-amber-950/40 to-slate-900 border border-rose-500/30 text-white shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="p-3 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/30 shrink-0">
+            <Sparkles size={20} />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-extrabold text-white">Weather-Driven Digital Twin Simulation Studio</h2>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-500 text-white">LIVE AI</span>
+            </div>
+            <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">
+              Simulate counterfactual micro-climates (blizzards, cloudbursts, extreme heat), mountain pass closures, transit delays, and cascading schedule viability adjustments.
+            </p>
+          </div>
+        </div>
+
+        <Link
+          href={`/trip/${tripId}/weather`}
+          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md transition shrink-0"
+        >
+          <span>Launch Weather Simulator</span>
+          <ArrowRight size={13} />
+        </Link>
+      </div>
+
       {forkSuccess && (
         <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 flex items-center justify-between gap-3 shadow-sm">
           <div className="flex items-center gap-2.5">

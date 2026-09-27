@@ -5,7 +5,7 @@ import PermissionModal from "@/components/PermissionModal";
 import LenisProvider from "@/components/LenisProvider";
 
 export const metadata: Metadata = {
-  title: "GroupTrip Ledger — Split Travel Expenses Effortlessly",
+  title: "TriFork — Split Travel Expenses Effortlessly",
   description: "Build itineraries, track shared expenses, and settle debts with the minimum number of payments. Built for group travel.",
 };
 

@@ -15,7 +15,7 @@ const COLORS = {
   burgundy: '#791523',
   cream: '#eadecd',
   offWhite: '#fdfbfa',
-  rose: '#d05461'
+  rose: '#b83a4b'
 };
 
 const staggerContainer = {
@@ -79,7 +79,7 @@ export default function LoginPage() {
       }
 
       setUser(profileData);
-      router.push('/dashboard');
+      router.push('/hub');
     } catch (err: any) {
       setError(err.message || 'Invalid email or password.');
     } finally {
@@ -114,7 +114,7 @@ export default function LoginPage() {
               <div className="w-10 h-10 rounded-full flex items-center justify-center bg-white/20 backdrop-blur-md">
                 <Plane className="w-5 h-5 text-white" />
               </div>
-              <span className="text-2xl font-black tracking-tight">Tripfor</span>
+              <span className="text-2xl font-black tracking-tight">TriFork</span>
             </div>
             <h1 className="text-5xl font-black tracking-tighter leading-[1.1] mb-6">
               Your next adventure is waiting.
