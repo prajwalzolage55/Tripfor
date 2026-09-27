@@ -246,7 +246,6 @@ Participants see their own data in full, group totals in aggregate, and other
 members' individual transactions only if those members opt to share. Product
 maturity detail almost no competing team will model.
 
-
 ================================================================================
 11. SUPPORTING FEATURES
 ================================================================================

@@ -1,16 +1,17 @@
-# GroupTrip Ledger 🗺️
+# TriFork 🧭
 
-A group travel coordination and settlement app. Organizers build an editable itinerary, add participants, track shared expenses, and settle debts with the minimum number of payments.
+A premium group travel coordination, interactive 3D itinerary, and smart debt settlement platform. Organizers build an editable itinerary, explore destinations in 3D, add participants, track shared expenses, simulate what-if scenarios, and settle debts with the minimum number of payments.
 
 ## Features
 
-- **Itinerary Builder** — Add flights, hotels, activities, transfers, dining with participant assignment
-- **Expense Tracking** — Link expenses to itinerary items, multiple split types, receipt upload via Cloudinary
-- **Smart Settlement** — Simplified debt calculation (minimum payments to settle all debts)
-- **Personal Dashboard** — Each member sees only their items, their share, and their settlements
-- **Group Dashboard** — Pie/bar charts for cost breakdown by category and member contributions
-- **UPI Payment Links** — One-tap payment links for settlements
-- **Invite System** — 6-character invite codes for joining trips
+- **Cesium 3D Globe & Weather** — Interactive 3D globe visualization of itinerary destinations with real-time OpenWeather live sync
+- **Itinerary Builder** — Add flights, hotels, activities, transfers, and dining with participant assignment
+- **Smart Debt Engine** — Simplified debt calculation (minimum payment matrix to settle all debts)
+- **Dependency & Settlement Graph** — Visual directed graph mapping debts, transfers, and participant transaction networks
+- **What-If Scenario Simulator** — Counterfactual modeling for trip cancellations, refunds, and expense reallocations
+- **Personal & Group Dashboards** — Personalized shares, settlements, and interactive breakdown charts
+- **UPI Payment Links** — Instant one-tap UPI links for hassle-free mobile settlements
+- **Invite System** — 6-character invite codes and direct sharing for seamless onboarding
 
 ## Tech Stack
 
